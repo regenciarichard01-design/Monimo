@@ -1,0 +1,66 @@
+:root{font-family:system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial;}
+/* base layout */
+body{margin:0;padding:16px;background:#ffffff;color:#111;max-width:980px;margin-left:auto;margin-right:auto;transition:background-color .25s,color .25s}
+header{margin-bottom:12px;text-align:center}
+h1{margin:0;font-size:1.6rem}
+.nav{display:flex;gap:8px;justify-content:center;margin-bottom:12px}
+.nav .tab-btn{padding:8px 12px;border-radius:8px;border:none;background:#eee;cursor:pointer}
+.nav .tab-btn.active{background:#2b6ef6;color:#fff}
+
+/* cards and summaries */
+#dashboard{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px;justify-content:center}
+.card{flex:1 1 200px;text-align:center;background:#f6f8fb;padding:14px;border-radius:10px;box-shadow:0 1px 6px rgba(0,0,0,0.06)}
+.summary-row{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px;justify-content:center}
+.summary-card{flex:1 1 220px;background:#ffffff;padding:14px;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,0.06);text-align:center}
+.summary-card h4{margin:0 0 8px;font-weight:600}
+.summary-card div{font-size:1.15rem;font-weight:700}
+
+/* forms */
+#add form,#inventoryForm,#stockForm{display:flex;flex-direction:column;gap:8px;max-width:520px;margin:0 auto}
+label{display:flex;flex-direction:column;font-size:0.95rem}
+input,select{padding:8px;border:1px solid #ddd;border-radius:6px}
+button{padding:8px 12px;border:none;border-radius:6px;cursor:pointer;background:#2b6ef6;color:#fff;transition:background .18s}
+button:hover{background:#1e53c3}
+
+/* tables */
+table{width:100%;border-collapse:collapse;background:#fff;border-radius:8px;overflow:hidden;margin-top:10px}
+th,td{padding:10px;border-bottom:1px solid #eee;text-align:left;vertical-align:middle}
+td:nth-child(6), th:nth-child(6), td:nth-child(7), th:nth-child(7){text-align:right}
+tr.low-stock td{background:#fff6f6}
+.muted{font-size:0.85rem;color:#666;margin-top:4px}
+
+/* inventory layout */
+.inventory-top{display:flex;gap:12px;margin-bottom:12px;align-items:flex-start;flex-wrap:wrap}
+.inventory-total{min-width:220px}
+
+/* view hiding */
+.view{display:none}
+.view.active{display:block}
+.hidden{display:none}
+
+/* per-item log row */
+.item-log-row td{background:#f9fafb;padding:8px;font-size:0.95rem}
+
+/* inventory log card */
+.inventory-log-card{margin-top:14px;text-align:center}
+#toggleOverallLog{background:#eee;color:#111;border-radius:8px;padding:8px 12px}
+
+/* theme toggle button */
+#theme-toggle{position:fixed;right:16px;top:16px;padding:8px 12px;border-radius:8px;border:none;background:#ddd;cursor:pointer;z-index:20}
+body.dark-mode #theme-toggle{background:#333;color:#fff}
+
+/* dark mode */
+body.dark-mode{background:#121212;color:#eaeaea}
+body.dark-mode .card{background:#1e1e1e;color:#fff}
+body.dark-mode .summary-card{background:#1f1f1f;color:#fff;box-shadow:none}
+body.dark-mode table, body.dark-mode th, body.dark-mode td{background:transparent;color:#fff;border-color:#2b2b2b}
+body.dark-mode input, body.dark-mode select, body.dark-mode button{background:#2a2a2a;color:#fff;border:1px solid #444}
+body.dark-mode .nav .tab-btn{background:#2a2a2a;color:#eaeaea}
+body.dark-mode .nav .tab-btn.active{background:#4062d8}
+
+/* responsive */
+@media (max-width:720px){
+  .summary-card,.card{flex-basis:100%}
+  #theme-toggle{right:8px;top:8px}
+  .inventory-top{flex-direction:column}
+}

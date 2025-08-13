@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Monimo — Dashboard</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <button id="theme-toggle">🌙 Dark Mode</button>
+
+  <header>
+    <h1>Monimo</h1>
+    <p>Smart recording for your business</p>
+  </header>
+
+  <!-- NAV -->
+  <nav class="nav">
+    <button class="tab-btn active" data-target="transactionsView">Transactions</button>
+    <button class="tab-btn" data-target="inventoryView">Inventory</button>
+  </nav>
+
+  <main>
+    <!-- TRANSACTIONS VIEW -->
+    <section id="transactionsView" class="view active">
+      <!-- Overall totals -->
+      <section id="dashboard">
+        <div class="card">
+          <h3>Total Revenue</h3>
+          <div id="totalRevenue">₱0.00</div>
+        </div>
+        <div class="card">
+          <h3>Total Expense</h3>
+          <div id="totalExpense">₱0.00</div>
+        </div>
+        <div class="card">
+          <h3>Profit</h3>
+          <div id="profit">₱0.00</div>
+        </div>
+      </section>
+
+      <!-- Monthly Summary controls -->
+      <section id="monthly-summary-controls" class="centered">
+        <label for="monthPicker">Select Month:</label>
+        <input type="month" id="monthPicker">
+      </section>
+
+      <!-- Monthly Summary cards -->
+      <section id="monthly-summary" class="summary-row">
+        <div class="summary-card">
+          <h4 id="monthIncomeLabel">Income</h4>
+          <div id="monthlyIncome">₱0.00</div>
+        </div>
+        <div class="summary-card">
+          <h4 id="monthExpenseLabel">Expenses</h4>
+          <div id="monthlyExpense">₱0.00</div>
+        </div>
+        <div class="summary-card">
+          <h4 id="monthNetLabel">Net</h4>
+          <div id="monthlyNet">₱0.00</div>
+        </div>
+      </section>
+
+      <!-- Add transaction -->
+      <section id="add">
+        <h2>Add transaction</h2>
+        <form id="transactionForm">
+          <label>
+            Description
+            <input id="description" required />
+          </label>
+
+          <label>
+            Amount
+            <input id="amount" type="number" step="0.01" required />
+          </label>
+
+          <label>
+            Type
+            <select id="type">
+              <option value="revenue">Revenue (Sale)</option>
+              <option value="expense">Expense (Purchase)</option>
+            </select>
+          </label>
+
+          <label>
+            Inventory Item (optional)
+            <select id="inventorySelect">
+              <option value="">— None —</option>
+            </select>
+          </label>
+
+          <label>
+            Quantity (optional — required if inventory item chosen)
+            <input id="quantity" type="number" min="1" step="1" placeholder="e.g. 1" />
+          </label>
+
+          <button type="submit" id="addBtn">Add</button>
+        </form>
+      </section>
+
+      <!-- Transactions list + filter -->
+      <section id="list">
+        <h2>Transactions</h2>
+        <div id="filter">
+          <label>
+            From:
+            <input type="date" id="fromDate">
+          </label>
+          <label>
+            To:
+            <input type="date" id="toDate">
+          </label>
+          <button id="applyFilter">Filter</button>
+          <button id="clearFilter">Clear</button>
+        </div>
+        <table id="transactionsTable">
+          <thead>
+            <tr><th>Date</th><th>Description</th><th>Type</th><th>Amount</th><th></th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </section>
+    </section>
+
+    <!-- INVENTORY VIEW -->
+    <section id="inventoryView" class="view">
+      <section class="inventory-top">
+        <div class="card inventory-total">
+          <h3>Total Inventory Value</h3>
+          <div id="inventoryValue">₱0.00</div>
+        </div>
+
+        <div class="card">
+          <h3>Add New Item</h3>
+          <form id="inventoryForm">
+            <label>Item Name<input id="itemName" required /></label>
+            <label>Description<input id="itemDesc" /></label>
+            <label>Category<input id="itemCategory" placeholder="e.g. Coffee Beans" /></label>
+            <label>Unit Price<input id="itemPrice" type="number" step="0.01" required /></label>
+            <label>Starting Quantity<input id="itemQtyStart" type="number" min="0" step="1" value="0" /></label>
+            <div style="display:flex;gap:8px;margin-top:8px;">
+              <button type="submit">Add Item</button>
+              <button type="button" id="inventoryClear">Clear</button>
+            </div>
+          </form>
+        </div>
+      </section>
+
+      <section class="inventory-table-section">
+        <h2>Inventory Items</h2>
+        <table id="inventoryTable">
+          <thead>
+            <tr><th>Name</th><th>Description</th><th>Category</th><th>Qty</th><th>Unit Price</th><th>Total Value</th><th></th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </section>
+
+      <section class="inventory-actions">
+        <h3>Adjust Stock (Purchase / Manual)</h3>
+        <form id="stockForm">
+          <label>Item
+            <select id="stockItemSelect"><option value="">— select —</option></select>
+          </label>
+          <label>Quantity
+            <input id="stockQty" type="number" min="1" step="1" />
+          </label>
+          <label>Action
+            <select id="stockAction">
+              <option value="add">Add Stock (Purchase)</option>
+              <option value="remove">Remove Stock (Manual)</option>
+            </select>
+          </label>
+          <button type="submit">Apply</button>
+        </form>
+      </section>
+
+      <!-- Overall Log (expandable) -->
+      <section class="inventory-log-card">
+        <button id="toggleOverallLog">Show Inventory Log</button>
+        <div id="overallLogWrapper" class="hidden">
+          <h3>Overall Inventory Log</h3>
+          <table id="overallLogTable">
+            <thead><tr><th>Date</th><th>Item</th><th>Action</th><th>Qty Change</th><th>Balance After</th><th>Note</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>
