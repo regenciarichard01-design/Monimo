@@ -21,6 +21,18 @@ function formatCurrency(num){
 function uid(){ return Date.now().toString() + Math.floor(Math.random()*1000); }
 function nowISO(){ return new Date().toISOString(); }
 
+// Compute a transaction's Inventory Cost (COGS) safely
+function getTxnInventoryCost(t){
+  if(!t) return 0;
+  if(typeof t.invCost === 'number' && !isNaN(t.invCost)) return Number(t.invCost);
+  if(t.type === 'revenue' && t.invId && t.invQty){
+    const inv = inventory.find(i=>i.id === t.invId);
+    const unit = inv ? Number(inv.unitPrice || 0) : 0;
+    return Number(t.invQty) * unit; // fallback if older txns lack invCost
+  }
+  return 0;
+}
+
 // --- load / save ---
 function loadAll(){
   const raw = localStorage.getItem(STORAGE_KEY);
@@ -64,9 +76,12 @@ function addLog(itemId, action, qtyChange, note){
 function updateDashboard(){
   const revenue = transactions.filter(t => t.type === 'revenue').reduce((s,t)=> s + Number(t.amount), 0);
   const expense = transactions.filter(t => t.type === 'expense').reduce((s,t)=> s + Number(t.amount), 0);
-  const profit = revenue - expense;
+  const inventoryCost = transactions.reduce((s,t)=> s + getTxnInventoryCost(t), 0);
+  const profit = revenue - inventoryCost - expense;
+
   document.getElementById('totalRevenue').textContent = formatCurrency(revenue);
   document.getElementById('totalExpense').textContent = formatCurrency(expense);
+  document.getElementById('totalInventoryCost').textContent = formatCurrency(inventoryCost); // 🔹 ADDED
   document.getElementById('profit').textContent = formatCurrency(profit);
 }
 
@@ -133,7 +148,6 @@ function revertTransactionInventory(txn){
     saveAll();
     return { ok:true };
   } else if(txn.type === 'expense'){ // originally a purchase that added stock -> revert by subtracting qty
-    // subtracting could produce negative. warn and still perform unless user cancels earlier.
     inv.quantity = Number(inv.quantity) - qty;
     addLog(inv.id, 'restore', -qty, `Restore (remove) from revert of purchase tx ${txn.id}`);
     saveAll();
@@ -144,16 +158,18 @@ function revertTransactionInventory(txn){
 
 // apply transaction inventory effect (for new or edited txn). If not enough stock on sale -> return error
 function applyTransactionInventory(txn){
-  if(!txn || !txn.invId) return { ok:true };
+  if(!txn || !txn.invId) { txn.invCost = 0; return { ok:true }; }
   const inv = inventory.find(i=>i.id === txn.invId);
   if(!inv) return { error:true, msg: 'Inventory item not found' };
   const qty = Number(txn.invQty || 0);
-  if(txn.type === 'revenue'){ // sale -> decrease
+  if(txn.type === 'revenue'){ // sale -> decrease & record COGS now
     if(inv.quantity < qty) return { error:true, msg: `Not enough stock for "${inv.name}". Available: ${inv.quantity}` };
     inv.quantity = Number(inv.quantity) - qty;
+    txn.invCost = Number(inv.unitPrice || 0) * qty; // 🔹 record Inventory Cost at time of sale
     addLog(inv.id, 'sale', -qty, `Sale tx ${txn.id}`);
   } else if(txn.type === 'expense'){ // purchase -> increase
     inv.quantity = Number(inv.quantity) + qty;
+    txn.invCost = 0; // no COGS on purchases
     addLog(inv.id, 'purchase', +qty, `Purchase tx ${txn.id}`);
   }
   saveAll();
@@ -188,11 +204,9 @@ function deleteTransaction(id){
       else if(txn.type === 'expense') newQty = Number(inv.quantity) - Number(txn.invQty || 0);
 
       if(txn.type === 'expense' && newQty < 0){
-        // warning: reverting this purchase will make stock negative (because purchases were previously consumed)
         const ok = confirm(`Reverting this purchase will make "${inv.name}" negative (${newQty}). Continue?`);
         if(!ok) return; // abort deletion
       }
-      // apply revert
       const res = revertTransactionInventory(txn);
       if(res.error){
         alert('Error reverting inventory: ' + res.msg);
@@ -261,6 +275,7 @@ function commitTransactionForm(){
       invId: invId || null,
       invQty: invId ? invQty : null,
       invName: invId ? (inventory.find(i=>i.id===invId)?.name || '') : null,
+      invCost: 0, // 🔹 will be set if sale applied
       date: new Date().toISOString()
     };
 
@@ -288,13 +303,14 @@ function commitTransactionForm(){
       return;
     }
 
-    // Step 3: store new txn values
+    // Step 3: store new txn values (including invCost)
     txn.description = newTxn.description;
     txn.amount = newTxn.amount;
     txn.type = newTxn.type;
     txn.invId = newTxn.invId;
     txn.invQty = newTxn.invQty;
     txn.invName = newTxn.invName;
+    txn.invCost = Number(newTxn.invCost || 0); // 🔹 ADDED
     txn.date = newTxn.date;
 
     // add log entry specifically for edit (reason)
@@ -322,6 +338,7 @@ function commitTransactionForm(){
     invId: invId || null,
     invQty: invId ? invQty : null,
     invName: invId ? (inventory.find(i=>i.id===invId)?.name || '') : null,
+    invCost: 0, // 🔹 will be set if sale applied
     date: new Date().toISOString()
   };
 
@@ -332,6 +349,9 @@ function commitTransactionForm(){
       alert(applyRes.msg);
       return;
     }
+  } else {
+    // if no inventory link, ensure no invCost
+    newTxn.invCost = 0;
   }
 
   addTransaction(newTxn);
@@ -678,13 +698,16 @@ function updateMonthlySummary(year, month){
 
   const income = monthly.filter(t => t.type === 'revenue').reduce((s,t)=> s + Number(t.amount), 0);
   const expenses = monthly.filter(t => t.type === 'expense').reduce((s,t)=> s + Number(t.amount), 0);
-  const net = income - expenses;
+  const invCost = monthly.reduce((s,t)=> s + getTxnInventoryCost(t), 0); // 🔹 monthly Inventory Cost
+  const net = income - invCost - expenses;
   const monthName = start.toLocaleString('default',{month:'long',year:'numeric'});
 
   document.getElementById('monthIncomeLabel').textContent = `${monthName} — Income`;
+  document.getElementById('monthInvCostLabel').textContent = `${monthName} — Inventory Cost`; // 🔹 ADDED
   document.getElementById('monthExpenseLabel').textContent = `${monthName} — Expenses`;
   document.getElementById('monthNetLabel').textContent = `${monthName} — Net`;
   document.getElementById('monthlyIncome').textContent = formatCurrency(income);
+  document.getElementById('monthlyInvCost').textContent = formatCurrency(invCost); // 🔹 ADDED
   document.getElementById('monthlyExpense').textContent = formatCurrency(expenses);
   document.getElementById('monthlyNet').textContent = formatCurrency(net);
 }
