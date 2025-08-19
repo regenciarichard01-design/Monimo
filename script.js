@@ -1,27 +1,81 @@
-/* Monimo - script.js
+/* Monimo - script.js (Merged & Fixed)
    Transactions + Inventory + Inventory Logs (localStorage)
+   JOURNALS: Purchases, Sales, Cash Receipts, Cash Disbursements, General
+   NEW:
+     - One-time Trial Reset (wipes old data once so you can start fresh)
+     - Editable purchases, partial payments (AR/AP), customer & supplier, business name
+     - Color accents, modern UI, expenses exclude inventory purchases in cards/summary
+     - Purchases appear in Purchases Journal, Cash Disbursements (if cash), and General Journal
+     - Sales (partial/full) payments now reflected in General Journal
+     - Edit/Delete cascades to all affected journals
+     - Removed misleading +qty log on edit
+     - Purchase edit/delete moved from Purchases Journal to Inventory Tab per-item log
 */
 
-// STORAGE KEYS
+/* =========================
+   STORAGE KEYS + APP STATE
+   ========================= */
 const STORAGE_KEY = 'monimo_transactions';
 const INV_KEY = 'inventoryData';
 const LOG_KEY = 'inventoryLogs';
 
+// journal + settings keys
+const PURCHASES_KEY = 'purchasesJournal';
+const SALES_KEY = 'salesJournal';
+const RECEIPTS_KEY = 'cashReceipts';
+const DISB_KEY = 'cashDisbursements';
+const SETTINGS_KEY = 'monimo_settings';
+
 // App state
 let transactions = [];
 let inventory = [];
-let logs = []; // overall logs
+let logs = []; // overall inventory logs
+let purchasesJournal = [];
+let salesJournal = [];
+let cashReceipts = [];
+let cashDisbursements = [];
+
 let editId = null; // transaction currently editing
 let editingInventoryId = null; // inventory item editing flag
+let originalTxnSnapshot = null;
 
-// --- helpers ---
+let settings = {
+  businessName: 'Monimo',
+  theme: 'light',
+  accent: 'blue'
+};
+
+/* =========================
+   ONE-TIME TRIAL RESET
+   (Deletes existing local data once so you start clean,
+    then preserves all new entries going forward)
+   ========================= */
+function trialResetIfNeeded() {
+  const FLAG = 'monimo_trial_cleared_v1';
+  if (!localStorage.getItem(FLAG)) {
+    // Keep settings; wipe journals, transactions, inventory, logs
+    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(INV_KEY);
+    localStorage.removeItem(LOG_KEY);
+    localStorage.removeItem(PURCHASES_KEY);
+    localStorage.removeItem(SALES_KEY);
+    localStorage.removeItem(RECEIPTS_KEY);
+    localStorage.removeItem(DISB_KEY);
+    // Mark as cleared so we don’t wipe again
+    localStorage.setItem(FLAG, '1');
+  }
+}
+
+/* =========================
+   HELPERS
+   ========================= */
 function formatCurrency(num){
   return '₱' + Number(num || 0).toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2});
 }
 function uid(){ return Date.now().toString() + Math.floor(Math.random()*1000); }
 function nowISO(){ return new Date().toISOString(); }
 
-// Compute a transaction's Inventory Cost (COGS) safely
+/** Compute a transaction's Inventory Cost (COGS) safely */
 function getTxnInventoryCost(t){
   if(!t) return 0;
   if(typeof t.invCost === 'number' && !isNaN(t.invCost)) return Number(t.invCost);
@@ -33,7 +87,9 @@ function getTxnInventoryCost(t){
   return 0;
 }
 
-// --- load / save ---
+/* =========================
+   LOAD / SAVE
+   ========================= */
 function loadAll(){
   const raw = localStorage.getItem(STORAGE_KEY);
   transactions = raw ? JSON.parse(raw) : [];
@@ -41,19 +97,30 @@ function loadAll(){
   inventory = rawInv ? JSON.parse(rawInv) : [];
   const rawLogs = localStorage.getItem(LOG_KEY);
   logs = rawLogs ? JSON.parse(rawLogs) : [];
+
+  // journals
+  purchasesJournal = JSON.parse(localStorage.getItem(PURCHASES_KEY) || '[]');
+  salesJournal = JSON.parse(localStorage.getItem(SALES_KEY) || '[]');
+  cashReceipts = JSON.parse(localStorage.getItem(RECEIPTS_KEY) || '[]');
+  cashDisbursements = JSON.parse(localStorage.getItem(DISB_KEY) || '[]');
+
+  // settings
+  settings = Object.assign(settings, JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}'));
 }
 function saveAll(){
   localStorage.setItem(STORAGE_KEY, JSON.stringify(transactions));
   localStorage.setItem(INV_KEY, JSON.stringify(inventory));
   localStorage.setItem(LOG_KEY, JSON.stringify(logs));
+  localStorage.setItem(PURCHASES_KEY, JSON.stringify(purchasesJournal));
+  localStorage.setItem(SALES_KEY, JSON.stringify(salesJournal));
+  localStorage.setItem(RECEIPTS_KEY, JSON.stringify(cashReceipts));
+  localStorage.setItem(DISB_KEY, JSON.stringify(cashDisbursements));
+  localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
 }
 
-// --- logging ---
-/*
- log entry:
- { id, timestamp, itemId, itemName, action, qtyChange, balanceAfter, note }
- action: 'sale' (deduct), 'purchase' (add), 'restore' (reverted from edit/delete), 'manual' (stock adjustments), 'edit' (edit adjustment)
-*/
+/* =========================
+   LOGGING
+   ========================= */
 function addLog(itemId, action, qtyChange, note){
   const item = inventory.find(i => i.id === itemId);
   const balance = item ? Number(item.quantity) : null;
@@ -67,26 +134,37 @@ function addLog(itemId, action, qtyChange, note){
     balanceAfter: balance,
     note: note || ''
   };
-  logs.unshift(entry); // newest first
+  logs.unshift(entry);
   saveAll();
-  renderOverallLog(); // refresh UI
+  renderOverallLog();
 }
 
-// --- transactions UI + behavior ---
+/* =========================
+   DASHBOARD & SUMMARY
+   (Expenses EXCLUDE inventory purchases)
+   ========================= */
 function updateDashboard(){
   const revenue = transactions.filter(t => t.type === 'revenue').reduce((s,t)=> s + Number(t.amount), 0);
-  const expense = transactions.filter(t => t.type === 'expense').reduce((s,t)=> s + Number(t.amount), 0);
-  const inventoryCost = transactions.reduce((s,t)=> s + getTxnInventoryCost(t), 0);
-  const profit = revenue - inventoryCost - expense;
 
-  document.getElementById('totalRevenue').textContent = formatCurrency(revenue);
-  document.getElementById('totalExpense').textContent = formatCurrency(expense);
-  document.getElementById('totalInventoryCost').textContent = formatCurrency(inventoryCost); // 🔹 ADDED
-  document.getElementById('profit').textContent = formatCurrency(profit);
+  // exclude expense transactions that are inventory purchases (have invId)
+  const expenseNonInventory = transactions
+    .filter(t => t.type === 'expense' && !t.invId)
+    .reduce((s,t)=> s + Number(t.amount), 0);
+
+  const inventoryCost = transactions.reduce((s,t)=> s + getTxnInventoryCost(t), 0);
+  const profit = revenue - inventoryCost - expenseNonInventory;
+
+  el('#totalRevenue').textContent = formatCurrency(revenue);
+  el('#totalExpense').textContent = formatCurrency(expenseNonInventory);
+  el('#totalInventoryCost').textContent = formatCurrency(inventoryCost);
+  el('#profit').textContent = formatCurrency(profit);
 }
 
+/* =========================
+   RENDER TRANSACTIONS
+   ========================= */
 function renderTransactions(filterFrom, filterTo){
-  const tbody = document.querySelector('#transactionsTable tbody');
+  const tbody = qs('#transactionsTable tbody');
   if(!tbody) return;
   tbody.innerHTML = '';
 
@@ -105,9 +183,16 @@ function renderTransactions(filterFrom, filterTo){
 
   filtered.slice().reverse().forEach(t=>{
     const tr = document.createElement('tr');
+    const extra = [
+      t.invName ? `Item: ${t.invName} ×${t.invQty}` : '',
+      t.paymentMethod ? `Method: ${t.paymentMethod}` : '',
+      (t.customer && t.type==='revenue') ? `Customer: ${t.customer}` : '',
+      (t.supplier && t.type==='expense' && t.invId) ? `Supplier: ${t.supplier}` : ''
+    ].filter(Boolean).map(s=>`<div class="muted">${s}</div>`).join('');
+
     tr.innerHTML = `
       <td>${new Date(t.date).toLocaleString()}</td>
-      <td>${t.description}${t.invName ? `<div class="muted">Item: ${t.invName} ×${t.invQty}</div>` : ''}</td>
+      <td>${t.description}${extra}</td>
       <td>${t.type}</td>
       <td>${formatCurrency(t.amount)}</td>
       <td>
@@ -118,36 +203,34 @@ function renderTransactions(filterFrom, filterTo){
     tbody.appendChild(tr);
   });
 
-  // handlers
   tbody.querySelectorAll('.del-btn').forEach(btn=>{
     btn.addEventListener('click', e=>{
       const id = e.target.dataset.id;
-      if(!confirm('Delete this transaction? This will also restore/revert inventory linked to it.')) return;
+      if(!confirm('Delete this transaction? This also reverts any linked inventory and removes related journal entries.')) return;
       deleteTransaction(id);
     });
   });
 
   tbody.querySelectorAll('.edit-btn').forEach(btn=>{
-    btn.addEventListener('click', e=>{
-      startEditTransaction(e.target.dataset.id);
-    });
+    btn.addEventListener('click', e=> startEditTransaction(e.target.dataset.id));
   });
 }
 
-// --- inventory application helpers ---
-// revert effect of a transaction (used for edit/delete). Returns object {ok:true} or {error:true, msg}
+/* =========================
+   INVENTORY HELPERS
+   ========================= */
 function revertTransactionInventory(txn){
   if(!txn || !txn.invId) return { ok: true };
   const inv = inventory.find(i=>i.id === txn.invId);
   if(!inv) return { error:true, msg: 'Inventory item no longer exists' };
 
   const qty = Number(txn.invQty || 0);
-  if(txn.type === 'revenue'){ // originally a sale that deducted stock -> restore by adding qty
+  if(txn.type === 'revenue'){ // sale deducted stock -> restore
     inv.quantity = Number(inv.quantity) + qty;
     addLog(inv.id, 'restore', +qty, `Restore from revert of sale tx ${txn.id}`);
     saveAll();
     return { ok:true };
-  } else if(txn.type === 'expense'){ // originally a purchase that added stock -> revert by subtracting qty
+  } else if(txn.type === 'expense'){ // purchase added stock -> revert by subtracting
     inv.quantity = Number(inv.quantity) - qty;
     addLog(inv.id, 'restore', -qty, `Restore (remove) from revert of purchase tx ${txn.id}`);
     saveAll();
@@ -156,31 +239,422 @@ function revertTransactionInventory(txn){
   return { ok:true };
 }
 
-// apply transaction inventory effect (for new or edited txn). If not enough stock on sale -> return error
 function applyTransactionInventory(txn){
   if(!txn || !txn.invId) { txn.invCost = 0; return { ok:true }; }
   const inv = inventory.find(i=>i.id === txn.invId);
   if(!inv) return { error:true, msg: 'Inventory item not found' };
   const qty = Number(txn.invQty || 0);
-  if(txn.type === 'revenue'){ // sale -> decrease & record COGS now
+  if(txn.type === 'revenue'){ // sale -> decrease & record COGS
     if(inv.quantity < qty) return { error:true, msg: `Not enough stock for "${inv.name}". Available: ${inv.quantity}` };
     inv.quantity = Number(inv.quantity) - qty;
-    txn.invCost = Number(inv.unitPrice || 0) * qty; // 🔹 record Inventory Cost at time of sale
+    txn.invCost = Number(inv.unitPrice || 0) * qty;
     addLog(inv.id, 'sale', -qty, `Sale tx ${txn.id}`);
   } else if(txn.type === 'expense'){ // purchase -> increase
     inv.quantity = Number(inv.quantity) + qty;
-    txn.invCost = 0; // no COGS on purchases
+    txn.invCost = 0;
     addLog(inv.id, 'purchase', +qty, `Purchase tx ${txn.id}`);
   }
   saveAll();
   return { ok:true };
 }
 
-// --- transaction flows: add / edit / delete ---
-// add new transaction (already validated before calling)
+/* =========================
+   JOURNALS: creation, updates, linking
+   ========================= */
+function createJournalFromTransaction(txn){
+  if(!txn || !txn.id) return;
+
+  // remove duplicates first
+  removeJournalEntriesForTxn(txn.id);
+
+  if(txn.type === 'revenue'){
+    const entry = {
+      id: uid(),
+      txnId: txn.id,
+      date: txn.date,
+      description: txn.description,
+      amount: Number(txn.amount),
+      invId: txn.invId || null,
+      invQty: txn.invQty || null,
+      paymentMethod: txn.paymentMethod || 'Cash',
+      customer: txn.customer || '',
+      paidAmount: (txn.paymentMethod === 'Cash') ? Number(txn.amount) : 0,
+      paid: (txn.paymentMethod === 'Cash')
+    };
+    salesJournal.unshift(entry);
+    saveAll();
+    renderSalesJournal();
+
+    // If cash sale, mirror into Receipts (for visibility)
+    if(entry.paid){
+      const receipt = {
+        id: uid(),
+        date: txn.date,
+        from: entry.customer || entry.description || 'Customer',
+        amount: Number(txn.amount),
+        saleId: entry.id,
+        note: 'Cash sale (paid in full)'
+      };
+      cashReceipts.unshift(receipt);
+      saveAll();
+      renderCashReceipts();
+    }
+
+  } else if(txn.type === 'expense'){
+    if(txn.invId){
+      // Inventory Purchase -> Purchases Journal
+      const entry = {
+        id: uid(),
+        txnId: txn.id,
+        date: txn.date,
+        description: txn.description,
+        amount: Number(txn.amount),
+        invId: txn.invId,
+        invQty: txn.invQty,
+        paymentMethod: txn.paymentMethod || 'Cash',
+        supplier: txn.supplier || '',
+        paidAmount: (txn.paymentMethod === 'Cash') ? Number(txn.amount) : 0,
+        paid: (txn.paymentMethod === 'Cash')
+      };
+      purchasesJournal.unshift(entry);
+      saveAll();
+      renderPurchasesJournal();
+
+      // If cash purchase, mirror into Disbursements
+      if(entry.paid){
+        const disb = {
+          id: uid(),
+          date: txn.date,
+          description: entry.supplier || entry.description || 'Purchase',
+          amount: Number(txn.amount),
+          txnId: entry.txnId,
+          note: 'Cash purchase (paid in full)'
+        };
+        cashDisbursements.unshift(disb);
+        saveAll();
+        renderCashDisbursements();
+      }
+    } else {
+      // Regular expense -> Cash Disbursement
+      const entry = {
+        id: uid(),
+        txnId: txn.id,
+        date: txn.date,
+        description: txn.description,
+        amount: Number(txn.amount),
+        note: ''
+      };
+      cashDisbursements.unshift(entry);
+      saveAll();
+      renderCashDisbursements();
+    }
+  }
+
+  renderGeneralJournal();
+}
+
+// Remove linked journal entries for a txn id (cleanup on delete/edit)
+function removeJournalEntriesForTxn(txnId){
+  let changed = false;
+  const beforeP = purchasesJournal.length;
+  purchasesJournal = purchasesJournal.filter(j => j.txnId !== txnId);
+  if(purchasesJournal.length !== beforeP) changed = true;
+
+  const beforeS = salesJournal.length;
+  salesJournal = salesJournal.filter(j => j.txnId !== txnId);
+  if(salesJournal.length !== beforeS) changed = true;
+
+  const beforeD = cashDisbursements.length;
+  cashDisbursements = cashDisbursements.filter(j => j.txnId !== txnId);
+  if(cashDisbursements.length !== beforeD) changed = true;
+
+  // Receipts linked by saleId — if sale removed, drop receipts too (handled in deleteTransaction when we know sale.id)
+  if(changed) saveAll();
+  renderPurchasesJournal();
+  renderSalesJournal();
+  renderCashDisbursements();
+  renderGeneralJournal();
+}
+
+// Update journal entry when transaction is edited
+function updateJournalFromTxn(txn){
+  if(!txn || !txn.id) return;
+
+  // Purchases
+  purchasesJournal.forEach(j=>{
+    if(j.txnId === txn.id){
+      j.date = txn.date;
+      j.description = txn.description;
+      j.amount = Number(txn.amount);
+      j.invQty = txn.invQty || null;
+      j.invId = txn.invId || null;
+      j.paymentMethod = txn.paymentMethod || j.paymentMethod || 'Cash';
+      j.supplier = txn.supplier || j.supplier || '';
+
+      // Recompute paid flag if amount changed
+      j.paidAmount = Number(j.paidAmount || 0);
+      j.paid = j.paidAmount >= j.amount;
+
+      // If switched/kept as Cash and not yet fully paid, auto-record the difference
+      if(j.paymentMethod === 'Cash' && !j.paid){
+        const payLeft = Math.max(0, Number(j.amount) - Number(j.paidAmount || 0));
+        if(payLeft > 0){
+          j.paidAmount = Number(j.amount);
+          j.paid = true;
+          // record disbursement for the difference
+          cashDisbursements.unshift({
+            id: uid(), date: txn.date,
+            description: j.supplier || j.description || 'Purchase',
+            amount: payLeft, txnId: j.txnId,
+            note: 'Marked paid on edit (diff)'
+          });
+        }
+      } else {
+        // If paidAmount > amount after reducing amount, clamp
+        if(j.paidAmount > j.amount) j.paidAmount = j.amount;
+        j.paid = j.paidAmount >= j.amount;
+      }
+    }
+  });
+
+  // Sales
+  salesJournal.forEach(j=>{
+    if(j.txnId === txn.id){
+      j.date = txn.date;
+      j.description = txn.description;
+      j.amount = Number(txn.amount);
+      j.invQty = txn.invQty || null;
+      j.invId = txn.invId || null;
+      j.paymentMethod = txn.paymentMethod || j.paymentMethod || 'Cash';
+      j.customer = txn.customer || j.customer || '';
+
+      // Recompute paid if amount changed
+      j.paidAmount = Number(j.paidAmount || 0);
+      j.paid = j.paidAmount >= j.amount;
+
+      // If it's Cash and not fully paid, auto-record the difference as receipt
+      if(j.paymentMethod === 'Cash' && !j.paid){
+        const payLeft = Math.max(0, Number(j.amount) - Number(j.paidAmount || 0));
+        if(payLeft > 0){
+          j.paidAmount = Number(j.amount);
+          j.paid = true;
+          cashReceipts.unshift({
+            id: uid(), date: txn.date,
+            from: j.customer || j.description || 'Customer',
+            amount: payLeft, saleId: j.id,
+            note: 'Marked paid on edit (diff)'
+          });
+        }
+      } else {
+        // Clamp if amount decreased below paidAmount
+        if(j.paidAmount > j.amount) j.paidAmount = j.amount;
+        j.paid = j.paidAmount >= j.amount;
+      }
+    }
+  });
+
+  // Disbursements (regular expense)
+  cashDisbursements.forEach(d=>{
+    if(d.txnId === txn.id){
+      d.date = txn.date;
+      d.description = txn.description;
+      d.amount = Number(txn.amount);
+    }
+  });
+
+  saveAll();
+  renderPurchasesJournal();
+  renderSalesJournal();
+  renderCashDisbursements();
+  renderCashReceipts();
+  renderGeneralJournal();
+}
+
+/* =========================
+   RENDER JOURNAL VIEWS
+   ========================= */
+function renderPurchasesJournal(){
+  const tb = qs('#purchasesTable tbody');
+  if(!tb) return;
+  tb.innerHTML = '';
+  purchasesJournal.forEach(p=>{
+    const itemName = inventory.find(i=>i.id===p.invId)?.name || p.description || '';
+    const remaining = Math.max(0, Number(p.amount) - Number(p.paidAmount || 0));
+    const paidStr = `${formatCurrency(p.paidAmount || 0)} / ${formatCurrency(p.amount)}${remaining>0 ? ` (Rem: ${formatCurrency(remaining)})` : ''}`;
+
+    // NOTE: Per request, we moved Edit/Delete to Inventory Tab per-item log — so actions here are only payments.
+    const actions = `
+      ${p.paymentMethod === 'Credit' && remaining > 0 ? `
+        <button class="pay-supplier-btn" data-id="${p.id}">Pay</button>
+        <button class="partial-btn pay-supplier-partial" data-id="${p.id}">Partial</button>` : ''}
+    `;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${new Date(p.date).toLocaleString()}</td>
+                    <td>${itemName}</td>
+                    <td>${p.invQty ?? ''}</td>
+                    <td>${formatCurrency(p.amount)}</td>
+                    <td>${p.paymentMethod || ''}</td>
+                    <td>${p.supplier || ''}</td>
+                    <td>${paidStr}</td>
+                    <td>${p.txnId || ''}</td>
+                    <td>${actions}</td>`;
+    tb.appendChild(tr);
+  });
+
+  // pay supplier full
+  tb.querySelectorAll('.pay-supplier-btn').forEach(b=>{
+    b.addEventListener('click', e=> paySupplier(e.target.dataset.id, null));
+  });
+  // partial pay supplier
+  tb.querySelectorAll('.pay-supplier-partial').forEach(b=>{
+    b.addEventListener('click', e=>{
+      const id = e.target.dataset.id;
+      const p = purchasesJournal.find(x=>x.id===id);
+      if(!p) return;
+      const rem = Math.max(0, Number(p.amount) - Number(p.paidAmount||0));
+      let amt = prompt(`Enter partial payment amount (Remaining: ${formatCurrency(rem)})`, rem>0? (rem/2).toFixed(2): '0.00');
+      if(amt===null) return;
+      amt = parseFloat(amt);
+      if(isNaN(amt) || amt<=0){ alert('Invalid amount'); return; }
+      paySupplier(id, amt);
+    });
+  });
+}
+
+function renderSalesJournal(){
+  const tb = qs('#salesTable tbody');
+  if(!tb) return;
+  tb.innerHTML = '';
+  salesJournal.forEach(s=>{
+    const remaining = Math.max(0, Number(s.amount) - Number(s.paidAmount || 0));
+    const paidStr = `${formatCurrency(s.paidAmount || 0)} / ${formatCurrency(s.amount)}${remaining>0 ? ` (Rem: ${formatCurrency(remaining)})` : ''}`;
+    const actions = `
+      ${(s.paymentMethod==='Credit' && remaining>0) ? `
+        <button class="mark-paid-btn" data-id="${s.id}">Pay in Full</button>
+        <button class="partial-btn mark-partial-btn" data-id="${s.id}">Partial</button>` : ''}
+    `;
+    const tr = document.createElement('tr');
+    tr.dataset.saleId = s.id;
+    tr.innerHTML = `<td>${new Date(s.date).toLocaleString()}</td>
+                    <td>${s.description}</td>
+                    <td>${s.customer || ''}</td>
+                    <td>${inventory.find(i=>i.id===s.invId)?.name || (s.invId ? s.invId : '')}</td>
+                    <td>${s.invQty ?? ''}</td>
+                    <td>${formatCurrency(s.amount)}</td>
+                    <td>${s.paymentMethod || 'Cash'}</td>
+                    <td>${paidStr}</td>
+                    <td>${actions}</td>`;
+    tb.appendChild(tr);
+  });
+
+  // Pay in full
+  tb.querySelectorAll('.mark-paid-btn').forEach(b=>{
+    b.addEventListener('click', e=> markSalePaid(e.target.dataset.id, null));
+  });
+  // Partial
+  tb.querySelectorAll('.mark-partial-btn').forEach(b=>{
+    b.addEventListener('click', e=>{
+      const id = e.target.dataset.id;
+      const sale = salesJournal.find(x=>x.id===id);
+      if(!sale) return;
+      const rem = Math.max(0, Number(sale.amount) - Number(sale.paidAmount||0));
+      let amt = prompt(`Enter partial payment amount (Remaining: ${formatCurrency(rem)})`, rem>0? (rem/2).toFixed(2) : '0.00');
+      if(amt===null) return;
+      amt = parseFloat(amt);
+      if(isNaN(amt) || amt<=0){ alert('Invalid amount'); return; }
+      markSalePaid(id, amt);
+    });
+  });
+}
+
+function renderCashReceipts(){
+  const tb = qs('#cashReceiptsTable tbody');
+  if(!tb) return;
+  tb.innerHTML = '';
+  cashReceipts.forEach(r=>{
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${new Date(r.date).toLocaleString()}</td>
+                    <td>${r.from || r.description || ''}</td>
+                    <td>${formatCurrency(r.amount)}</td>
+                    <td>${r.saleId || ''}</td>
+                    <td>${r.note || ''}</td>`;
+    tb.appendChild(tr);
+  });
+}
+
+function renderCashDisbursements(){
+  const tb = qs('#cashDisbursementsTable tbody');
+  if(!tb) return;
+  tb.innerHTML = '';
+  cashDisbursements.forEach(d=>{
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${new Date(d.date).toLocaleString()}</td>
+                    <td>${d.description || ''}</td>
+                    <td>${formatCurrency(d.amount)}</td>
+                    <td>${d.txnId || ''}</td>
+                    <td>${d.note || ''}</td>`;
+    tb.appendChild(tr);
+  });
+}
+
+/** General Journal is derived from:
+  * A. Base transactions
+  * B. Cash Receipts (payments on receivables)
+  * C. Cash Disbursements (payments on payables or expenses)
+  * This ensures edits/payments show up without needing a separate store.
+  */
+function renderGeneralJournal(){
+  const tb = qs('#generalJournalTable tbody');
+  if(!tb) return;
+  tb.innerHTML = '';
+
+  // A. Base transactions (latest first)
+  transactions.slice().reverse().forEach(t=>{
+    const detailBits = [];
+    if(t.invName) detailBits.push(`Item: ${t.invName} ×${t.invQty}`);
+    if(t.customer && t.type==='revenue') detailBits.push(`Customer: ${t.customer}`);
+    if(t.supplier && t.type==='expense' && t.invId) detailBits.push(`Supplier: ${t.supplier}`);
+    if(t.paymentMethod) detailBits.push(`Method: ${t.paymentMethod}`);
+    const detail = detailBits.join(' — ');
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${new Date(t.date).toLocaleString()}</td>
+                    <td>${t.description}</td>
+                    <td>${t.type}</td>
+                    <td>${formatCurrency(t.amount)}</td>
+                    <td>${detail}</td>`;
+    tb.appendChild(tr);
+  });
+
+  // B. Cash Receipts (payments on receivables)
+  cashReceipts.slice().reverse().forEach(r=>{
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${new Date(r.date).toLocaleString()}</td>
+                    <td>Receivable paid — ${r.from || 'Customer'}</td>
+                    <td>receipt</td>
+                    <td>${formatCurrency(r.amount)}</td>
+                    <td>Sale: ${r.saleId || ''} ${r.note ? '— '+r.note : ''}</td>`;
+    tb.appendChild(tr);
+  });
+
+  // C. Cash Disbursements (payments on payables or expenses)
+  cashDisbursements.slice().reverse().forEach(d=>{
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${new Date(d.date).toLocaleString()}</td>
+                    <td>Payment — ${d.description || ''}</td>
+                    <td>disbursement</td>
+                    <td>${formatCurrency(d.amount)}</td>
+                    <td>${d.txnId ? 'Linked Txn: '+d.txnId : ''} ${d.note ? '— '+d.note : ''}</td>`;
+    tb.appendChild(tr);
+  });
+}
+
+/* =========================
+   TRANSACTION FLOWS: add / edit / delete
+   ========================= */
 function addTransaction(txn){
   transactions.push(txn);
   saveAll();
+  createJournalFromTransaction(txn);
   updateDashboard();
   renderTransactions();
   renderInventory();
@@ -188,7 +662,7 @@ function addTransaction(txn){
   updateMonthlySummary();
 }
 
-// delete transaction: revert inventory then remove txn and log
+/** Delete a base transaction + revert inventory + cascade journal deletions */
 function deleteTransaction(id){
   const idx = transactions.findIndex(t=>t.id===id);
   if(idx === -1) return;
@@ -198,14 +672,13 @@ function deleteTransaction(id){
   if(txn.invId){
     const inv = inventory.find(i => i.id === txn.invId);
     if(inv){
-      // compute what will be the new quantity if we revert
       let newQty = inv.quantity;
       if(txn.type === 'revenue') newQty = Number(inv.quantity) + Number(txn.invQty || 0);
       else if(txn.type === 'expense') newQty = Number(inv.quantity) - Number(txn.invQty || 0);
 
       if(txn.type === 'expense' && newQty < 0){
         const ok = confirm(`Reverting this purchase will make "${inv.name}" negative (${newQty}). Continue?`);
-        if(!ok) return; // abort deletion
+        if(!ok) return;
       }
       const res = revertTransactionInventory(txn);
       if(res.error){
@@ -215,58 +688,78 @@ function deleteTransaction(id){
     }
   }
 
-  // remove txn
+  // remove linked receipts/disbursements if they point to this txn's journal entries
+  // sales: find sale journal entry -> remove its receipts
+  const saleJ = salesJournal.find(s=>s.txnId===id);
+  if(saleJ){
+    cashReceipts = cashReceipts.filter(r => r.saleId !== saleJ.id);
+  }
+  // purchases: find purchase journal entry -> remove linked disbursements
+  const purchJ = purchasesJournal.find(p=>p.txnId===id);
+  if(purchJ){
+    cashDisbursements = cashDisbursements.filter(d => d.txnId !== purchJ.txnId);
+  }
+
+  // remove txn + linked journals
   transactions.splice(idx,1);
+  purchasesJournal = purchasesJournal.filter(j => j.txnId !== id);
+  salesJournal = salesJournal.filter(j => j.txnId !== id);
+  cashDisbursements = cashDisbursements.filter(j => j.txnId !== id);
+
   saveAll();
   renderTransactions();
   updateDashboard();
   updateMonthlySummary();
   renderInventory();
   fillInventorySelects();
+  renderPurchasesJournal();
+  renderSalesJournal();
+  renderCashReceipts();
+  renderCashDisbursements();
+  renderGeneralJournal();
 }
 
-// start editing: populate form and keep original snapshot
-let originalTxnSnapshot = null;
 function startEditTransaction(id){
   const t = transactions.find(x=>x.id===id);
   if(!t) return;
-  // keep original snapshot to revert later
   originalTxnSnapshot = JSON.parse(JSON.stringify(t));
-  document.getElementById('description').value = t.description;
-  document.getElementById('amount').value = t.amount;
-  document.getElementById('type').value = t.type;
-  document.getElementById('inventorySelect').value = t.invId || '';
-  document.getElementById('quantity').value = t.invQty || '';
+  el('#description').value = t.description;
+  el('#amount').value = t.amount;
+  el('#type').value = t.type;
+  el('#inventorySelect').value = t.invId || '';
+  el('#quantity').value = t.invQty || '';
+  el('#paymentMethod').value = t.paymentMethod || 'Cash';
+  el('#customerName').value = t.customer || '';
+  el('#supplierName').value = t.supplier || '';
+  toggleConditionalFields();
   editId = id;
-  document.getElementById('addBtn').textContent = 'Update';
+  el('#addBtn').textContent = 'Update';
+  window.scrollTo({top:0,behavior:'smooth'});
 }
 
-// handle submit from form: add new or commit edit
 function commitTransactionForm(){
-  const description = document.getElementById('description').value.trim();
-  const amount = parseFloat(document.getElementById('amount').value);
-  const type = document.getElementById('type').value;
-  const invId = document.getElementById('inventorySelect').value || '';
-  const invQty = document.getElementById('quantity').value ? parseInt(document.getElementById('quantity').value,10) : 0;
+  const description = el('#description').value.trim();
+  const amount = parseFloat(el('#amount').value);
+  const type = el('#type').value;
+  const invId = el('#inventorySelect').value || '';
+  const invQty = el('#quantity').value ? parseInt(el('#quantity').value,10) : 0;
+  const paymentMethod = el('#paymentMethod') ? el('#paymentMethod').value : 'Cash';
+  const customer = el('#customerName').value.trim();
+  const supplier = el('#supplierName').value.trim();
 
   if(!description || isNaN(amount) || amount <= 0){ alert('Enter a valid description and amount.'); return; }
   if(invId && (!invQty || invQty <= 0)){ alert('Enter a valid quantity for the selected inventory item.'); return; }
 
   if(editId){
-    // editing existing transaction
     const txn = transactions.find(x=>x.id === editId);
     if(!txn){ alert('Transaction not found'); return; }
 
-    // Step 1: revert originalTxnSnapshot inventory (if it had inv)
+    // revert original inventory if needed
     if(originalTxnSnapshot && originalTxnSnapshot.invId){
       const revertRes = revertTransactionInventory(originalTxnSnapshot);
-      if(revertRes.error){
-        alert('Unable to revert original transaction: ' + revertRes.msg);
-        return;
-      }
+      if(revertRes.error){ alert('Unable to revert original transaction: ' + revertRes.msg); return; }
     }
 
-    // Step 2: apply new inventory effect (if any)
     const newTxn = {
       id: txn.id,
       description,
@@ -275,13 +768,16 @@ function commitTransactionForm(){
       invId: invId || null,
       invQty: invId ? invQty : null,
       invName: invId ? (inventory.find(i=>i.id===invId)?.name || '') : null,
-      invCost: 0, // 🔹 will be set if sale applied
+      invCost: 0,
+      paymentMethod,
+      customer: (type==='revenue') ? customer : '',
+      supplier: (type==='expense' && invId) ? supplier : '',
       date: new Date().toISOString()
     };
 
     const applyRes = applyTransactionInventory(newTxn);
     if(applyRes.error){
-      // rollback: re-apply original txn effect (to keep inventory consistent)
+      // rollback inventory to original
       if(originalTxnSnapshot){
         const rollbackRes = applyTransactionInventory(originalTxnSnapshot);
         if(rollbackRes.error){
@@ -292,44 +788,30 @@ function commitTransactionForm(){
       } else {
         alert('Edit cancelled: ' + applyRes.msg);
       }
-      originalTxnSnapshot = null;
-      editId = null;
-      resetTransactionForm();
-      renderTransactions();
-      renderInventory();
-      fillInventorySelects();
-      updateDashboard();
-      updateMonthlySummary();
+      originalTxnSnapshot = null; editId = null; resetTransactionForm();
+      renderTransactions(); renderInventory(); fillInventorySelects();
+      updateDashboard(); updateMonthlySummary();
       return;
     }
 
-    // Step 3: store new txn values (including invCost)
-    txn.description = newTxn.description;
-    txn.amount = newTxn.amount;
-    txn.type = newTxn.type;
-    txn.invId = newTxn.invId;
-    txn.invQty = newTxn.invQty;
-    txn.invName = newTxn.invName;
-    txn.invCost = Number(newTxn.invCost || 0); // 🔹 ADDED
-    txn.date = newTxn.date;
+    // store new values
+    Object.assign(txn, newTxn);
+    txn.invCost = Number(newTxn.invCost || 0);
 
-    // add log entry specifically for edit (reason)
-    if(newTxn.invId){
-      addLog(newTxn.invId, 'edit', Number(newTxn.invQty || 0), `Edited tx ${txn.id}`);
-    }
+    // IMPORTANT: Do NOT add an extra inventory log here (to avoid misleading +qty after edit).
+    // Inventory effects are already captured by revertTransactionInventory + applyTransactionInventory.
+
     saveAll();
-    originalTxnSnapshot = null;
-    editId = null;
+    updateJournalFromTxn(txn);
+
+    originalTxnSnapshot = null; editId = null;
     resetTransactionForm();
-    renderTransactions();
-    renderInventory();
-    fillInventorySelects();
-    updateDashboard();
-    updateMonthlySummary();
+    renderTransactions(); renderInventory(); fillInventorySelects();
+    updateDashboard(); updateMonthlySummary();
     return;
   }
 
-  // New transaction flow
+  // New transaction
   const newTxn = {
     id: uid(),
     description,
@@ -338,42 +820,43 @@ function commitTransactionForm(){
     invId: invId || null,
     invQty: invId ? invQty : null,
     invName: invId ? (inventory.find(i=>i.id===invId)?.name || '') : null,
-    invCost: 0, // 🔹 will be set if sale applied
+    invCost: 0,
+    paymentMethod,
+    customer: (type==='revenue') ? customer : '',
+    supplier: (type==='expense' && invId) ? supplier : '',
     date: new Date().toISOString()
   };
 
-  // apply inventory effect if linked
   if(newTxn.invId){
     const applyRes = applyTransactionInventory(newTxn);
-    if(applyRes.error){
-      alert(applyRes.msg);
-      return;
-    }
-  } else {
-    // if no inventory link, ensure no invCost
-    newTxn.invCost = 0;
-  }
+    if(applyRes.error){ alert(applyRes.msg); return; }
+  } else newTxn.invCost = 0;
 
   addTransaction(newTxn);
   saveAll();
   resetTransactionForm();
 }
 
-// reset transaction form
 function resetTransactionForm(){
-  document.getElementById('description').value = '';
-  document.getElementById('amount').value = '';
-  document.getElementById('type').value = 'revenue';
-  document.getElementById('inventorySelect').value = '';
-  document.getElementById('quantity').value = '';
+  el('#description').value = '';
+  el('#amount').value = '';
+  el('#type').value = 'revenue';
+  el('#inventorySelect').value = '';
+  el('#quantity').value = '';
+  el('#paymentMethod').value = 'Cash';
+  el('#customerName').value = '';
+  el('#supplierName').value = '';
+  toggleConditionalFields();
   editId = null;
   originalTxnSnapshot = null;
-  document.getElementById('addBtn').textContent = 'Add';
+  el('#addBtn').textContent = 'Add';
 }
 
-// --- inventory UI + actions ---
+/* =========================
+   INVENTORY UI + ACTIONS
+   ========================= */
 function renderInventory(){
-  const tbody = document.querySelector('#inventoryTable tbody');
+  const tbody = qs('#inventoryTable tbody');
   if(!tbody) return;
   tbody.innerHTML = '';
 
@@ -388,28 +871,33 @@ function renderInventory(){
       <td>${formatCurrency(item.unitPrice)}</td>
       <td>${formatCurrency(item.quantity * item.unitPrice)}</td>
       <td>
-        <button class="inv-edit" data-id="${item.id}">Edit</button>
-        <button class="inv-del" data-id="${item.id}">Delete</button>
-        <button class="inv-log-toggle" data-id="${item.id}">Show Log</button>
+        <button class="inv-edit edit-btn" data-id="${item.id}">Edit</button>
+        <button class="inv-del del-btn" data-id="${item.id}">Delete</button>
+        <button class="inv-log-toggle ghost" data-id="${item.id}">Show Log</button>
       </td>
     `;
     tbody.appendChild(tr);
 
-    // per-item log placeholder row (hidden)
+    // Per-item log row with Actions column for editing/deleting purchase transactions (moved here)
     const logRow = document.createElement('tr');
     logRow.className = 'item-log-row hidden';
     logRow.dataset.for = item.id;
-    logRow.innerHTML = `<td colspan="7"><div class="item-log-wrapper"><strong>Log for ${item.name}</strong>
-      <table class="small-log-table"><thead><tr><th>Date</th><th>Action</th><th>Qty Change</th><th>Balance</th><th>Note</th></tr></thead><tbody></tbody></table></div></td>`;
+    logRow.innerHTML = `<td colspan="7"><div class="item-log-wrapper">
+      <strong>Log for ${item.name}</strong>
+      <table class="small-log-table">
+        <thead>
+          <tr><th>Date</th><th>Action</th><th>Qty Change</th><th>Balance</th><th>Note</th><th>Actions</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div></td>`;
     tbody.appendChild(logRow);
   });
 
-  // handlers
   tbody.querySelectorAll('.inv-del').forEach(b=>{
     b.addEventListener('click', e=>{
       const id = e.target.dataset.id;
       if(!confirm('Delete inventory item? This will NOT change past transactions but will remove current stock records and logs. Continue?')) return;
-      // remove logs for this item
       logs = logs.filter(l => l.itemId !== id);
       inventory = inventory.filter(x=>x.id !== id);
       saveAll();
@@ -421,36 +909,46 @@ function renderInventory(){
   });
 
   tbody.querySelectorAll('.inv-edit').forEach(b=>{
-    b.addEventListener('click', e=>{
-      const id = e.target.dataset.id;
-      startEditInventory(id);
-    });
+    b.addEventListener('click', e=> startEditInventory(e.target.dataset.id));
   });
 
   tbody.querySelectorAll('.inv-log-toggle').forEach(b=>{
     b.addEventListener('click', e=>{
       const id = e.target.dataset.id;
       togglePerItemLog(id);
-      // update button text
       const btn = e.target;
       btn.textContent = btn.textContent === 'Show Log' ? 'Hide Log' : 'Show Log';
     });
   });
 
+  // Delegate edit/delete of purchase transactions from the per-item log
+  tbody.addEventListener('click', (e)=>{
+    const editBtn = e.target.closest('.log-edit-txn');
+    if(editBtn){
+      const txnId = editBtn.dataset.txn;
+      if(txnId) startEditTransaction(txnId);
+    }
+    const delBtn = e.target.closest('.log-delete-txn');
+    if(delBtn){
+      const txnId = delBtn.dataset.txn;
+      if(!txnId) return;
+      if(!confirm('Delete this linked purchase transaction? This will revert inventory and cascade journal updates.')) return;
+      deleteTransaction(txnId);
+    }
+  });
+
   updateInventoryValue();
-  renderOverallLog(); // keep log up to date
+  renderOverallLog();
 }
 
-// inventory total value
 function updateInventoryValue(){
   const total = inventory.reduce((s,i)=> s + (Number(i.quantity) * Number(i.unitPrice || 0)), 0);
-  document.getElementById('inventoryValue').textContent = formatCurrency(total);
+  el('#inventoryValue').textContent = formatCurrency(total);
 }
 
-// fill inventory dropdowns
 function fillInventorySelects(){
-  const invSelect = document.getElementById('inventorySelect');
-  const stockSelect = document.getElementById('stockItemSelect');
+  const invSelect = el('#inventorySelect');
+  const stockSelect = el('#stockItemSelect');
   [invSelect, stockSelect].forEach(sel=>{
     if(!sel) return;
     const cur = sel.value;
@@ -464,28 +962,34 @@ function fillInventorySelects(){
   });
 }
 
-// per-item log toggle
 function togglePerItemLog(itemId){
-  const tbody = document.querySelector('#inventoryTable tbody');
+  const tbody = qs('#inventoryTable tbody');
   const rows = Array.from(tbody.querySelectorAll('tr.item-log-row'));
   rows.forEach(r=>{
     if(r.dataset.for === itemId){
       r.classList.toggle('hidden');
-      // render logs into this row
-      const tb = r.querySelector('tbody');
-      tb.innerHTML = '';
+      const tb = r.querySelector('tbody'); tb.innerHTML = '';
       const entries = logs.filter(l => l.itemId === itemId);
       entries.forEach(en=>{
+        // Try to extract txnId from note "Purchase tx XXX" or "Sale tx XXX"
+        let linkedTxn = null;
+        const m = /(?:Purchase|Sale) tx (\w+)/i.exec(en.note || '');
+        if(m) linkedTxn = m[1];
+
         const rr = document.createElement('tr');
         rr.innerHTML = `<td>${new Date(en.timestamp).toLocaleString()}</td>
                         <td>${en.action}</td>
                         <td>${en.qtyChange>0? '+'+en.qtyChange: en.qtyChange}</td>
                         <td>${en.balanceAfter !== null ? en.balanceAfter : ''}</td>
-                        <td>${en.note}</td>`;
+                        <td>${en.note}</td>
+                        <td>
+                          ${(en.action === 'purchase' && linkedTxn) ? `
+                            <button class="log-edit-txn" data-txn="${linkedTxn}">Edit Txn</button>
+                            <button class="log-delete-txn" data-txn="${linkedTxn}">Delete Txn</button>` : ''}
+                        </td>`;
         tb.appendChild(rr);
       });
     } else {
-      // ensure other log rows hidden
       r.classList.add('hidden');
       const toggleBtn = tbody.querySelector(`button.inv-log-toggle[data-id="${r.dataset.for}"]`);
       if(toggleBtn) toggleBtn.textContent = 'Show Log';
@@ -493,11 +997,11 @@ function togglePerItemLog(itemId){
   });
 }
 
-// overall log render
 function renderOverallLog(){
-  const wrap = document.getElementById('overallLogWrapper');
+  const wrap = el('#overallLogWrapper');
   if(!wrap) return;
-  const tb = document.querySelector('#overallLogTable tbody');
+  const tb = qs('#overallLogTable tbody');
+  if(!tb) return;
   tb.innerHTML = '';
   logs.forEach(en=>{
     const tr = document.createElement('tr');
@@ -511,56 +1015,142 @@ function renderOverallLog(){
   });
 }
 
-// start edit inventory
 function startEditInventory(id){
   const it = inventory.find(x=>x.id===id);
   if(!it) return;
-  document.getElementById('itemName').value = it.name;
-  document.getElementById('itemDesc').value = it.description || '';
-  document.getElementById('itemCategory').value = it.category || '';
-  document.getElementById('itemPrice').value = it.unitPrice;
-  document.getElementById('itemQtyStart').value = it.quantity;
+  el('#itemName').value = it.name;
+  el('#itemDesc').value = it.description || '';
+  el('#itemCategory').value = it.category || '';
+  el('#itemPrice').value = it.unitPrice;
+  el('#itemQtyStart').value = it.quantity;
   editingInventoryId = id;
   window.scrollTo({top:0,behavior:'smooth'});
 }
 
-// clear inventory form
 function clearInventoryForm(){
-  document.getElementById('itemName').value = '';
-  document.getElementById('itemDesc').value = '';
-  document.getElementById('itemCategory').value = '';
-  document.getElementById('itemPrice').value = '';
-  document.getElementById('itemQtyStart').value = 0;
+  el('#itemName').value = '';
+  el('#itemDesc').value = '';
+  el('#itemCategory').value = '';
+  el('#itemPrice').value = '';
+  el('#itemQtyStart').value = 0;
   editingInventoryId = null;
 }
 
-// handle stock adjust form (manual add/remove)
+// stock adjust form
 function handleStockAdjust(e){
   e.preventDefault();
-  const id = document.getElementById('stockItemSelect').value;
-  const qty = parseInt(document.getElementById('stockQty').value,10);
-  const action = document.getElementById('stockAction').value;
+  const id = el('#stockItemSelect').value;
+  const qty = parseInt(el('#stockQty').value,10);
+  const action = el('#stockAction').value;
+  const paymentMethod = el('#stockPaymentMethod') ? el('#stockPaymentMethod').value : 'Cash';
   if(!id || !qty || qty <= 0){ alert('Select item and enter valid qty'); return; }
   const it = inventory.find(x=>x.id===id);
   if(!it) return;
-  if(action === 'add'){ it.quantity = Number(it.quantity) + qty; addLog(it.id, 'manual', +qty, 'Manual add'); }
-  else { // remove
+
+  if(action === 'add'){
+    const unit = Number(it.unitPrice || 0);
+    const amount = unit * qty;
+    const newTxn = {
+      id: uid(),
+      description: `Purchase - ${it.name}`,
+      amount: amount,
+      type: 'expense',
+      invId: it.id,
+      invQty: qty,
+      invName: it.name,
+      invCost: 0,
+      paymentMethod: paymentMethod,
+      supplier: '', // can be edited later
+      date: new Date().toISOString()
+    };
+    const applyRes = applyTransactionInventory(newTxn);
+    if(applyRes.error){ alert(applyRes.msg); return; }
+    addTransaction(newTxn);
+    saveAll();
+    return;
+  } else {
     if(it.quantity < qty){
       if(!confirm('Removing this quantity will make stock negative. Continue?')) return;
     }
     it.quantity = Number(it.quantity) - qty;
     addLog(it.id, 'manual', -qty, 'Manual remove');
+    saveAll();
+    renderInventory(); fillInventorySelects(); updateInventoryValue();
+    return;
   }
-  saveAll();
-  renderInventory();
-  fillInventorySelects();
-  updateInventoryValue();
 }
 
-// --- init UI and event wiring ---
+/* =========================
+   PAYMENTS: ACCOUNTS RECEIVABLE / PAYABLE
+   ========================= */
+// Sales: mark as paid (full or partial)
+function markSalePaid(saleId, amount){
+  const sale = salesJournal.find(s => s.id === saleId);
+  if(!sale){ alert('Sale record not found'); return; }
+  const remaining = Math.max(0, Number(sale.amount) - Number(sale.paidAmount || 0));
+  let payAmt = amount;
+  if(payAmt === null || payAmt === undefined) payAmt = remaining; // full
+  payAmt = Math.min(payAmt, remaining);
+  if(payAmt <= 0){ alert('Nothing to pay.'); return; }
+
+  sale.paidAmount = Number(sale.paidAmount || 0) + payAmt;
+  sale.paid = sale.paidAmount >= Number(sale.amount);
+
+  const receipt = {
+    id: uid(),
+    date: new Date().toISOString(),
+    from: sale.customer || sale.description || 'Customer',
+    amount: Number(payAmt),
+    saleId: sale.id,
+    note: sale.paid ? 'Paid in full' : 'Partial payment'
+  };
+  cashReceipts.unshift(receipt);
+  saveAll();
+  renderSalesJournal();
+  renderCashReceipts();
+  renderGeneralJournal();
+}
+
+// Purchases: pay supplier (full or partial)
+function paySupplier(purchaseId, amount){
+  const p = purchasesJournal.find(x=>x.id===purchaseId);
+  if(!p){ alert('Purchase record not found'); return; }
+  const remaining = Math.max(0, Number(p.amount) - Number(p.paidAmount || 0));
+  let payAmt = amount;
+  if(payAmt === null || payAmt === undefined) payAmt = remaining; // full
+  payAmt = Math.min(payAmt, remaining);
+  if(payAmt <= 0){ alert('Nothing to pay.'); return; }
+
+  p.paidAmount = Number(p.paidAmount || 0) + payAmt;
+  p.paid = p.paidAmount >= Number(p.amount);
+
+  const disb = {
+    id: uid(),
+    date: new Date().toISOString(),
+    description: p.supplier || p.description || 'Supplier',
+    amount: Number(payAmt),
+    txnId: p.txnId,
+    note: p.paid ? 'Paid in full' : 'Partial payment'
+  };
+  cashDisbursements.unshift(disb);
+  saveAll();
+  renderPurchasesJournal();
+  renderCashDisbursements();
+  renderGeneralJournal();
+}
+
+/* =========================
+   INIT UI AND EVENTS
+   ========================= */
 document.addEventListener('DOMContentLoaded', ()=>{
+  // One-time wipe so we start fresh for this trial, but keep new data afterwards
+  trialResetIfNeeded();
 
   loadAll();
+
+  // settings + theme
+  applySettingsUI();
+
   renderTransactions();
   renderInventory();
   fillInventorySelects();
@@ -568,53 +1158,77 @@ document.addEventListener('DOMContentLoaded', ()=>{
   updateMonthlySummary();
   updateInventoryValue();
 
+  // Journals
+  renderPurchasesJournal();
+  renderSalesJournal();
+  renderCashReceipts();
+  renderCashDisbursements();
+  renderGeneralJournal();
+
   // NAV tabs
-  document.querySelectorAll('.tab-btn').forEach(btn=>{
+  qsa('.tab-btn').forEach(btn=>{
     btn.addEventListener('click', ()=>{
-      document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+      qsa('.tab-btn').forEach(b=>b.classList.remove('active'));
       btn.classList.add('active');
       const target = btn.dataset.target;
-      document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
-      document.getElementById(target).classList.add('active');
+      qsa('.view').forEach(v=>v.classList.remove('active'));
+      el('#'+target).classList.add('active');
       if(target === 'inventoryView'){ renderInventory(); fillInventorySelects(); updateInventoryValue(); renderOverallLog(); }
+      if(target === 'journalsView'){
+        renderPurchasesJournal(); renderSalesJournal(); renderCashReceipts(); renderCashDisbursements(); renderGeneralJournal();
+      }
+    });
+  });
+
+  // Journals sub-tabs
+  qsa('.journal-subtab-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      qsa('.journal-subtab-btn').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      qsa('.journal-subview').forEach(v=>v.classList.remove('active'));
+      const target = btn.dataset.target;
+      el('#'+target).classList.add('active');
+      if(target === 'purchasesJournalView') renderPurchasesJournal();
+      if(target === 'salesJournalView') renderSalesJournal();
+      if(target === 'cashReceiptsView') renderCashReceipts();
+      if(target === 'cashDisbursementsView') renderCashDisbursements();
+      if(target === 'generalJournalView') renderGeneralJournal();
     });
   });
 
   // transaction submit
-  document.getElementById('transactionForm').addEventListener('submit', e=>{
+  el('#transactionForm').addEventListener('submit', e=>{
     e.preventDefault();
     commitTransactionForm();
   });
+  el('#resetTxnBtn').addEventListener('click', resetTransactionForm);
 
   // filters
-  const applyBtn = document.getElementById('applyFilter');
-  if(applyBtn) applyBtn.addEventListener('click', ()=> {
-    const from = document.getElementById('fromDate').value;
-    const to = document.getElementById('toDate').value;
+  on('#applyFilter','click', ()=>{
+    const from = el('#fromDate').value;
+    const to = el('#toDate').value;
     renderTransactions(from,to);
   });
-  const clearBtn = document.getElementById('clearFilter');
-  if(clearBtn) clearBtn.addEventListener('click', ()=> {
-    document.getElementById('fromDate').value = '';
-    document.getElementById('toDate').value = '';
+  on('#clearFilter','click', ()=>{
+    el('#fromDate').value = '';
+    el('#toDate').value = '';
     renderTransactions();
   });
 
   // inventory form submit
-  document.getElementById('inventoryForm').addEventListener('submit', e=>{
+  el('#inventoryForm').addEventListener('submit', e=>{
     e.preventDefault();
-    const name = document.getElementById('itemName').value.trim();
-    const desc = document.getElementById('itemDesc').value.trim();
-    const cat = document.getElementById('itemCategory').value.trim();
-    const price = parseFloat(document.getElementById('itemPrice').value);
-    const qtyStart = parseInt(document.getElementById('itemQtyStart').value,10) || 0;
+    const name = el('#itemName').value.trim();
+    const desc = el('#itemDesc').value.trim();
+    const cat = el('#itemCategory').value.trim();
+    const price = parseFloat(el('#itemPrice').value);
+    const qtyStart = parseInt(el('#itemQtyStart').value,10) || 0;
     if(!name || isNaN(price) || price < 0){ alert('Enter item name and valid price'); return; }
 
     if(editingInventoryId){
       const it = inventory.find(x=>x.id === editingInventoryId);
       if(it){
         it.name = name; it.description = desc; it.category = cat; it.unitPrice = Number(price);
-        // if starting quantity changed, record manual adjustment
         if(it.quantity !== Number(qtyStart)){
           const diff = Number(qtyStart) - Number(it.quantity);
           it.quantity = Number(qtyStart);
@@ -624,14 +1238,7 @@ document.addEventListener('DOMContentLoaded', ()=>{
       editingInventoryId = null;
     } else {
       const id = uid();
-      inventory.push({
-        id,
-        name,
-        description: desc,
-        category: cat,
-        unitPrice: Number(price),
-        quantity: Number(qtyStart)
-      });
+      inventory.push({ id, name, description: desc, category: cat, unitPrice: Number(price), quantity: Number(qtyStart) });
       if(qtyStart !== 0) addLog(id, 'manual', Number(qtyStart), 'Initial stock on item creation');
     }
 
@@ -641,48 +1248,76 @@ document.addEventListener('DOMContentLoaded', ()=>{
     fillInventorySelects();
   });
 
-  document.getElementById('inventoryClear').addEventListener('click', ()=> clearInventoryForm());
-  document.getElementById('stockForm').addEventListener('submit', handleStockAdjust);
+  on('#inventoryClear','click', clearInventoryForm);
+  on('#stockForm','submit', handleStockAdjust);
 
   // month picker
-  const monthPicker = document.getElementById('monthPicker');
+  const monthPicker = el('#monthPicker');
   if(monthPicker){
     const now = new Date();
     monthPicker.value = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
     monthPicker.addEventListener('change', ()=> updateMonthlySummary());
   }
 
-  // overall log toggle
-  const toggleOverallLogBtn = document.getElementById('toggleOverallLog');
+  // purchases log toggle
+  const toggleOverallLogBtn = el('#toggleOverallLog');
   if(toggleOverallLogBtn){
     toggleOverallLogBtn.addEventListener('click', ()=>{
-      const wrap = document.getElementById('overallLogWrapper');
+      const wrap = el('#overallLogWrapper');
       if(!wrap) return;
       wrap.classList.toggle('hidden');
-      toggleOverallLogBtn.textContent = wrap.classList.contains('hidden') ? 'Show Inventory Log' : 'Hide Inventory Log';
+      toggleOverallLogBtn.textContent = wrap.classList.contains('hidden') ? 'Show Purchases Log' : 'Hide Purchases Log';
       if(!wrap.classList.contains('hidden')) renderOverallLog();
     });
   }
 
-  // theme toggle
-  const themeToggleBtn = document.getElementById('theme-toggle');
-  if(localStorage.getItem('theme') === 'dark'){ document.body.classList.add('dark-mode'); if(themeToggleBtn) themeToggleBtn.textContent = '☀️ Light Mode'; }
+  // theme toggle (dark)
+  const themeToggleBtn = el('#theme-toggle');
+  if(settings.theme === 'dark'){ document.body.classList.add('dark-mode'); themeToggleBtn.textContent = '☀️ Light Mode'; }
   if(themeToggleBtn){
-    themeToggleBtn.addEventListener('click', ()=> {
+    themeToggleBtn.addEventListener('click', ()=>{
       document.body.classList.toggle('dark-mode');
-      if(document.body.classList.contains('dark-mode')){ localStorage.setItem('theme','dark'); themeToggleBtn.textContent = '☀️ Light Mode'; }
-      else { localStorage.setItem('theme','light'); themeToggleBtn.textContent = '🌙 Dark Mode'; }
+      settings.theme = document.body.classList.contains('dark-mode') ? 'dark' : 'light';
+      saveAll();
+      themeToggleBtn.textContent = (settings.theme==='dark') ? '☀️ Light Mode' : '🌙 Dark Mode';
     });
   }
-}); // DOMContentLoaded end
 
-// --- monthly summary (kept at bottom so functions available above) ---
+  // accent picker
+  qsa('.accent-dot').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const accent = btn.dataset.accent;
+      document.body.classList.remove('theme-blue','theme-green','theme-lavender');
+      document.body.classList.add(`theme-${accent}`);
+      settings.accent = accent;
+      saveAll();
+    });
+  });
+
+  // edit business
+  on('#editBizBtn','click', ()=>{
+    const name = prompt('Enter business name:', settings.businessName || 'Monimo');
+    if(name===null) return;
+    settings.businessName = name.trim() || 'Monimo';
+    saveAll();
+    applySettingsUI();
+  });
+
+  // show/hide conditional fields on type/select change
+  el('#type').addEventListener('change', toggleConditionalFields);
+  el('#inventorySelect').addEventListener('change', toggleConditionalFields);
+  toggleConditionalFields();
+}); // DOMContentLoaded
+
+/* =========================
+   MONTHLY SUMMARY (Exclude inventory purchase expenses)
+   ========================= */
 function updateMonthlySummary(year, month){
   let targetYear, targetMonth;
   if(year !== undefined && month !== undefined){
     targetYear = year; targetMonth = month;
   } else {
-    const picker = document.getElementById('monthPicker');
+    const picker = el('#monthPicker');
     if(picker && picker.value){
       const parts = picker.value.split('-'); targetYear = parseInt(parts[0],10); targetMonth = parseInt(parts[1],10)-1;
     } else {
@@ -697,22 +1332,54 @@ function updateMonthlySummary(year, month){
   });
 
   const income = monthly.filter(t => t.type === 'revenue').reduce((s,t)=> s + Number(t.amount), 0);
-  const expenses = monthly.filter(t => t.type === 'expense').reduce((s,t)=> s + Number(t.amount), 0);
-  const invCost = monthly.reduce((s,t)=> s + getTxnInventoryCost(t), 0); // 🔹 monthly Inventory Cost
-  const net = income - invCost - expenses;
+  const expensesExInv = monthly.filter(t => t.type === 'expense' && !t.invId).reduce((s,t)=> s + Number(t.amount), 0);
+  const invCost = monthly.reduce((s,t)=> s + getTxnInventoryCost(t), 0);
+  const net = income - invCost - expensesExInv;
   const monthName = start.toLocaleString('default',{month:'long',year:'numeric'});
 
-  document.getElementById('monthIncomeLabel').textContent = `${monthName} — Income`;
-  document.getElementById('monthInvCostLabel').textContent = `${monthName} — Inventory Cost`; // 🔹 ADDED
-  document.getElementById('monthExpenseLabel').textContent = `${monthName} — Expenses`;
-  document.getElementById('monthNetLabel').textContent = `${monthName} — Net`;
-  document.getElementById('monthlyIncome').textContent = formatCurrency(income);
-  document.getElementById('monthlyInvCost').textContent = formatCurrency(invCost); // 🔹 ADDED
-  document.getElementById('monthlyExpense').textContent = formatCurrency(expenses);
-  document.getElementById('monthlyNet').textContent = formatCurrency(net);
+  el('#monthIncomeLabel').textContent = `${monthName} — Income`;
+  el('#monthInvCostLabel').textContent = `${monthName} — Inventory Cost`;
+  el('#monthExpenseLabel').textContent = `${monthName} — Expenses`;
+  el('#monthNetLabel').textContent = `${monthName} — Net`;
+  el('#monthlyIncome').textContent = formatCurrency(income);
+  el('#monthlyInvCost').textContent = formatCurrency(invCost);
+  el('#monthlyExpense').textContent = formatCurrency(expensesExInv);
+  el('#monthlyNet').textContent = formatCurrency(net);
 }
 
-// helper to render overall log initially hidden
-(function initOverallLogHidden(){
-  // no-op here; overall log toggled by button
-})();
+/* =========================
+   UI HELPERS
+   ========================= */
+function el(sel){ return document.querySelector(sel); }
+function qs(sel){ return document.querySelector(sel); }
+function qsa(sel){ return Array.from(document.querySelectorAll(sel)); }
+function on(sel, ev, fn){ const n=el(sel); if(n) n.addEventListener(ev, fn); }
+
+function applySettingsUI(){
+  // business name
+  const h = el('#bizName');
+  if(h) h.textContent = settings.businessName || 'Monimo';
+  document.title = `${settings.businessName || 'Monimo'} — Dashboard`;
+
+  // accent
+  document.body.classList.remove('theme-blue','theme-green','theme-lavender');
+  document.body.classList.add(`theme-${settings.accent || 'blue'}`);
+
+  // theme
+  if(settings.theme === 'dark') document.body.classList.add('dark-mode');
+  else document.body.classList.remove('dark-mode');
+}
+
+// Show/hide conditional fields
+function toggleConditionalFields(){
+  const type = el('#type').value;
+  const hasInv = !!el('#inventorySelect').value;
+  const custField = document.querySelector('.field-customer');
+  const suppField = document.querySelector('.field-supplier');
+
+  if(custField) custField.style.display = (type==='revenue') ? 'flex' : 'none';
+  if(suppField) {
+    // supplier shown only for expense with inventory (purchases)
+    suppField.style.display = (type==='expense' && hasInv) ? 'flex' : 'none';
+  }
+}
