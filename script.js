@@ -791,6 +791,7 @@ function commitTransactionForm(){
       originalTxnSnapshot = null; editId = null; resetTransactionForm();
       renderTransactions(); renderInventory(); fillInventorySelects();
       updateDashboard(); updateMonthlySummary();
+      showToast("✓ Transaction Added");
       return;
     }
 
@@ -1382,4 +1383,32 @@ function toggleConditionalFields(){
     // supplier shown only for expense with inventory (purchases)
     suppField.style.display = (type==='expense' && hasInv) ? 'flex' : 'none';
   }
+}
+// Sidebar toggle
+const sidebar = document.querySelector(".sidebar");
+const sidebarToggle = document.querySelector("#sidebarToggle");
+
+if (sidebar && sidebarToggle) {
+  sidebarToggle.addEventListener("click", () => {
+    sidebar.classList.toggle("collapsed");
+  });
+}
+
+// Dark mode toggle
+const themeToggle = document.querySelector("#theme-toggle");
+if (themeToggle) {
+  themeToggle.addEventListener("click", () => {
+    document.body.classList.toggle("dark");
+    themeToggle.textContent =
+      document.body.classList.contains("dark") ? "☀️ Light Mode" : "🌙 Dark Mode";
+  });
+}
+// ✅ Toast function
+function showToast(message) {
+  const toast = document.getElementById('toast');
+  toast.textContent = message;
+  toast.classList.add('show');
+  setTimeout(() => {
+    toast.classList.remove('show');
+  }, 3000); // visible for 3 seconds
 }

@@ -7,310 +7,327 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body class="theme-blue">
-  <button id="theme-toggle">🌙 Dark Mode</button>
-
-  <header>
-    <div class="brand-row">
-      <h1 id="bizName">Monimo</h1>
-      <div class="brand-actions">
-        <button id="editBizBtn" class="ghost">Edit Business</button>
-        <div class="accent-picker" title="Accent Color">
-          <button class="accent-dot accent-blue" data-accent="blue" aria-label="Blue"></button>
-          <button class="accent-dot accent-green" data-accent="green" aria-label="Green"></button>
-          <button class="accent-dot accent-lavender" data-accent="lavender" aria-label="Lavender"></button>
-        </div>
+  <!-- 🔹 TOP BAR -->
+  <header class="topbar">
+    <button id="sidebarToggle" class="hamburger" aria-label="Toggle navigation">☰</button>
+    <div class="logo">Monimo</div>
+    <div class="topbar-right">
+      <strong id="bizName">Monimo</strong>
+      <button id="editBizBtn" class="ghost" title="Edit business name">Edit</button>
+      <div class="accent-picker" title="Accent">
+        <button class="accent-dot accent-blue" data-accent="blue" aria-label="Blue"></button>
+        <button class="accent-dot accent-green" data-accent="green" aria-label="Green"></button>
+        <button class="accent-dot accent-lavender" data-accent="lavender" aria-label="Lavender"></button>
       </div>
+      <button id="theme-toggle" title="Toggle theme">🌙</button>
     </div>
-    <p>Smart recording for your business</p>
   </header>
 
-  <!-- NAV -->
-  <nav class="nav">
-    <button class="tab-btn active" data-target="transactionsView">Transactions</button>
-    <button class="tab-btn" data-target="inventoryView">Inventory</button>
-    <button class="tab-btn" data-target="journalsView">Journals</button>
-  </nav>
+  <div class="shell">
+    <!-- 🔹 SIDEBAR -->
+    <aside id="sidebar" class="sidebar">
+      <nav class="side-nav">
+        <button class="tab-btn active" data-target="homeView"> Home</button>
+        <button class="tab-btn" data-target="transactionsView"> Transactions</button>
+        <button class="tab-btn" data-target="inventoryView"> Inventory</button>
+        <button class="tab-btn" data-target="journalsView"> Journals</button>
+      </nav>
+    </aside>
 
-  <main>
-    <!-- TRANSACTIONS VIEW -->
-    <section id="transactionsView" class="view active">
-      <!-- Overall totals -->
-      <section id="dashboard">
-        <div class="card">
-          <h3>Total Revenue</h3>
-          <div id="totalRevenue">₱0.00</div>
-        </div>
+    <!-- 🔹 MAIN CONTENT -->
+    <main class="main">
+      <!-- HOME VIEW -->
+      <section id="homeView" class="view active">
+        <section id="dashboard">
+          <div class="card">
+            <h3>Total Revenue</h3>
+            <div id="totalRevenue">₱0.00</div>
+          </div>
 
-        <div class="card">
-          <h3>Inventory Cost</h3>
-          <div id="totalInventoryCost">₱0.00</div>
-          <div class="muted tiny"></div>
-        </div>
+          <div class="card">
+            <h3>Inventory Cost</h3>
+            <div id="totalInventoryCost">₱0.00</div>
+            <div class="muted tiny"></div>
+          </div>
 
-        <div class="card">
-          <h3>Total Expense</h3>
-          <div id="totalExpense">₱0.00</div>
-          <div class="muted tiny"></div>
-        </div>
-        <div class="card">
-          <h3>Profit</h3>
-          <div id="profit">₱0.00</div>
-        </div>
+          <div class="card">
+            <h3>Total Expense</h3>
+            <div id="totalExpense">₱0.00</div>
+            <div class="muted tiny"></div>
+          </div>
+          <div class="card profit-highlight">
+  <h3>Profit</h3>
+  <div id="profit">₱0.00</div>
+</div>
+
+        </section>
       </section>
 
-      <!-- Monthly Summary controls -->
-      <section id="monthly-summary-controls" class="centered">
-        <label for="monthPicker">Select Month:</label>
-        <input type="month" id="monthPicker">
+      <!-- TRANSACTIONS VIEW -->
+      <section id="transactionsView" class="view">
+        <!-- Monthly Summary controls -->
+        <section id="monthly-summary-controls" class="centered" style="text-align:center;margin:8px 0 4px;">
+          <label for="monthPicker">Select Month:</label>
+          <input type="month" id="monthPicker">
+        </section>
+
+        <!-- Monthly Summary cards -->
+        <section id="monthly-summary" class="summary-row">
+          <div class="summary-card">
+            <h4 id="monthIncomeLabel">Income</h4>
+            <div id="monthlyIncome">₱0.00</div>
+          </div>
+
+          <div class="summary-card">
+            <h4 id="monthInvCostLabel">Inventory Cost</h4>
+            <div id="monthlyInvCost">₱0.00</div>
+          </div>
+
+          <div class="summary-card">
+            <h4 id="monthExpenseLabel">Expenses</h4>
+            <div id="monthlyExpense">₱0.00</div>
+            <div class="muted tiny"></div>
+          </div>
+          <div class="summary-card">
+            <h4 id="monthNetLabel">Net</h4>
+            <div id="monthlyNet">₱0.00</div>
+          </div>
+        </section>
+
+        <!-- Add transaction -->
+        <section id="add">
+          <h2>Add transaction</h2>
+          <form id="transactionForm">
+            <div class="form-grid">
+              <label>
+                Description
+                <input id="description" required />
+              </label>
+
+              <label>
+                Amount
+                <input id="amount" type="number" step="0.01" required />
+              </label>
+
+              <label>
+                Type
+                <select id="type">
+                  <option value="revenue">Revenue</option>
+                  <option value="expense">Expense</option>
+                </select>
+              </label>
+
+              <label>
+                Inventory Item (optional)
+                <select id="inventorySelect">
+                  <option value="">— None —</option>
+                </select>
+              </label>
+
+              <label>
+                Quantity (optional — required if inventory item chosen)
+                <input id="quantity" type="number" min="1" step="1" placeholder="e.g. 1" />
+              </label>
+
+              <!-- Payment method -->
+              <label>
+                Payment Method
+                <select id="paymentMethod">
+                  <option value="Cash">Cash</option>
+                  <option value="Credit">Credit</option>
+                </select>
+              </label>
+
+              <!-- Customer (for sales) -->
+              <label class="conditional field-customer">
+                Customer Name (for sales)
+                <input id="customerName" placeholder="e.g. Juan Dela Cruz" />
+              </label>
+
+              <!-- Supplier (for inventory purchases) -->
+              <label class="conditional field-supplier">
+                Supplier Name (for inventory purchases)
+                <input id="supplierName" placeholder="e.g. ABC Trading" />
+              </label>
+            </div>
+
+            <div class="actions">
+              <button type="submit" id="addBtn">Add</button>
+              <button type="button" id="resetTxnBtn" class="ghost">Clear</button>
+            </div>
+          </form>
+        </section>
+
+        <!-- Transactions list + filter -->
+        <section id="list">
+          <div class="section-head">
+            <h2>Transactions</h2>
+            <div class="filters">
+              <input type="text" id="searchTransactions" placeholder="🔍 Search transactions..." />
+
+              <label>From
+                <input type="date" id="fromDate">
+              </label>
+              <label>To
+                <input type="date" id="toDate">
+              </label>
+              <button id="applyFilter" class="ghost">Filter</button>
+              <button id="clearFilter" class="ghost">Clear</button>
+            </div>
+          </div>
+          <table id="transactionsTable">
+            <thead>
+              <tr><th>Date</th><th>Description</th><th>Type</th><th>Amount</th><th></th></tr>
+            </thead>
+            <tbody>
+  <tr class="empty-state"><td colspan="5">No transactions yet. Try adding your first sale!</td></tr>
+</tbody>
+
+          </table>
+        </section>
       </section>
 
-      <!-- Monthly Summary cards -->
-      <section id="monthly-summary" class="summary-row">
-        <div class="summary-card">
-          <h4 id="monthIncomeLabel">Income</h4>
-          <div id="monthlyIncome">₱0.00</div>
-        </div>
+      <!-- INVENTORY VIEW -->
+      <section id="inventoryView" class="view">
+        <section class="inventory-top">
+          <div class="card inventory-total">
+            <h3>Total Inventory Value</h3>
+            <div id="inventoryValue">₱0.00</div>
+          </div>
 
-        <div class="summary-card">
-          <h4 id="monthInvCostLabel">Inventory Cost</h4>
-          <div id="monthlyInvCost">₱0.00</div>
-        </div>
+          <div class="card">
+            <h3>Beginning Inventory</h3>
+            <form id="inventoryForm">
+              <label>Item Name<input id="itemName" required /></label>
+              <label>Description<input id="itemDesc" /></label>
+              <label>Category<input id="itemCategory" placeholder="e.g. Coffee Beans" /></label>
+              <label>Unit Price<input id="itemPrice" type="number" step="0.01" required /></label>
+              <label>Starting Quantity<input id="itemQtyStart" type="number" min="0" step="1" value="0" /></label>
+              <div style="display:flex;gap:8px;margin-top:8px;">
+                <button type="submit">Add Item</button>
+                <button type="button" id="inventoryClear" class="ghost">Clear</button>
+              </div>
+            </form>
+          </div>
+        </section>
 
-        <div class="summary-card">
-          <h4 id="monthExpenseLabel">Expenses</h4>
-          <div id="monthlyExpense">₱0.00</div>
-          <div class="muted tiny"></div>
-        </div>
-        <div class="summary-card">
-          <h4 id="monthNetLabel">Net</h4>
-          <div id="monthlyNet">₱0.00</div>
-        </div>
-      </section>
+        <section class="inventory-table-section">
+          <div class="section-head">
+            <h2>Inventory Items</h2>
+          </div>
+          <table id="inventoryTable">
+            <thead>
+              <tr><th>Name</th><th>Description</th><th>Category</th><th>Qty</th><th>Unit Price</th><th>Total Value</th><th></th></tr>
+            </thead>
+            <tbody>
+  <tr class="empty-state"><td colspan="7">No items in inventory. Add your first product!</td></tr>
+</tbody>
 
-      <!-- Add transaction -->
-      <section id="add">
-        <h2>Add transaction</h2>
-        <form id="transactionForm">
-          <div class="form-grid">
-            <label>
-              Description
-              <input id="description" required />
+          </table>
+        </section>
+
+        <section class="inventory-actions">
+          <h3>Adjust Stock (Purchase / Manual)</h3>
+          <form id="stockForm">
+            <label>Item
+              <select id="stockItemSelect"><option value="">— select —</option></select>
             </label>
-
-            <label>
-              Amount
-              <input id="amount" type="number" step="0.01" required />
+            <label>Quantity
+              <input id="stockQty" type="number" min="1" step="1" />
             </label>
-
-            <label>
-              Type
-              <select id="type">
-                <option value="revenue">Revenue</option>
-                <option value="expense">Expense</option>
-              </select>
-            </label>
-
-            <label>
-              Inventory Item (optional)
-              <select id="inventorySelect">
-                <option value="">— None —</option>
-              </select>
-            </label>
-
-            <label>
-              Quantity (optional — required if inventory item chosen)
-              <input id="quantity" type="number" min="1" step="1" placeholder="e.g. 1" />
-            </label>
-
-            <!-- Payment method -->
-            <label>
-              Payment Method
-              <select id="paymentMethod">
+            <label>Payment Method (when adding stock)
+              <select id="stockPaymentMethod">
                 <option value="Cash">Cash</option>
                 <option value="Credit">Credit</option>
               </select>
             </label>
-
-            <!-- Customer (for sales) -->
-            <label class="conditional field-customer">
-              Customer Name (for sales)
-              <input id="customerName" placeholder="e.g. Juan Dela Cruz" />
+            <label>Action
+              <select id="stockAction">
+                <option value="add">Add Stock (Purchase)</option>
+                <option value="remove">Remove Stock (Manual)</option>
+              </select>
             </label>
-
-            <!-- Supplier (for inventory purchases) -->
-            <label class="conditional field-supplier">
-              Supplier Name (for inventory purchases)
-              <input id="supplierName" placeholder="e.g. ABC Trading" />
-            </label>
-          </div>
-
-          <div class="actions">
-            <button type="submit" id="addBtn">Add</button>
-            <button type="button" id="resetTxnBtn" class="ghost">Clear</button>
-          </div>
-        </form>
-      </section>
-
-      <!-- Transactions list + filter -->
-      <section id="list">
-        <div class="section-head">
-          <h2>Transactions</h2>
-          <div class="filters">
-            <label>From
-              <input type="date" id="fromDate">
-            </label>
-            <label>To
-              <input type="date" id="toDate">
-            </label>
-            <button id="applyFilter" class="ghost">Filter</button>
-            <button id="clearFilter" class="ghost">Clear</button>
-          </div>
-        </div>
-        <table id="transactionsTable">
-          <thead>
-            <tr><th>Date</th><th>Description</th><th>Type</th><th>Amount</th><th></th></tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      </section>
-    </section>
-
-    <!-- INVENTORY VIEW -->
-    <section id="inventoryView" class="view">
-      <section class="inventory-top">
-        <div class="card inventory-total">
-          <h3>Total Inventory Value</h3>
-          <div id="inventoryValue">₱0.00</div>
-        </div>
-
-        <div class="card">
-          <h3>Add New Item</h3>
-          <form id="inventoryForm">
-            <label>Item Name<input id="itemName" required /></label>
-            <label>Description<input id="itemDesc" /></label>
-            <label>Category<input id="itemCategory" placeholder="e.g. Coffee Beans" /></label>
-            <label>Unit Price<input id="itemPrice" type="number" step="0.01" required /></label>
-            <label>Starting Quantity<input id="itemQtyStart" type="number" min="0" step="1" value="0" /></label>
-            <div style="display:flex;gap:8px;margin-top:8px;">
-              <button type="submit">Add Item</button>
-              <button type="button" id="inventoryClear" class="ghost">Clear</button>
-            </div>
+            <button type="submit">Apply</button>
           </form>
+        </section>
+
+        <!-- Overall Log (expandable) -->
+        <section class="inventory-log-card">
+          <button id="toggleOverallLog" class="ghost">Show Purchases Log</button>
+          <div id="overallLogWrapper" class="hidden">
+            <h3>Purchases Log</h3>
+            <table id="overallLogTable">
+              <thead><tr><th>Date</th><th>Item</th><th>Action</th><th>Qty Change</th><th>Balance After</th><th>Note</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+
+      <!-- JOURNALS VIEW -->
+      <section id="journalsView" class="view">
+        <div class="journal-nav">
+          <button class="journal-subtab-btn active" data-target="purchasesJournalView">Purchases</button>
+          <button class="journal-subtab-btn" data-target="salesJournalView">Sales</button>
+          <button class="journal-subtab-btn" data-target="cashReceiptsView">Cash Receipts</button>
+          <button class="journal-subtab-btn" data-target="cashDisbursementsView">Cash Disbursements</button>
+          <button class="journal-subtab-btn" data-target="generalJournalView">General Journal</button>
         </div>
-      </section>
 
-      <section class="inventory-table-section">
-        <div class="section-head">
-          <h2>Inventory Items</h2>
+        <div id="purchasesJournalView" class="journal-subview active">
+          <h2>Purchases Journal</h2>
+          <table id="purchasesTable">
+            <thead>
+              <tr>
+                <th>Date</th><th>Item</th><th>Qty</th><th>Amount</th><th>Method</th>
+                <th>Supplier</th><th>Paid / Remaining</th><th>Linked Txn</th><th></th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
         </div>
-        <table id="inventoryTable">
-          <thead>
-            <tr><th>Name</th><th>Description</th><th>Category</th><th>Qty</th><th>Unit Price</th><th>Total Value</th><th></th></tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      </section>
 
-      <section class="inventory-actions">
-        <h3>Adjust Stock (Purchase / Manual)</h3>
-        <form id="stockForm">
-          <label>Item
-            <select id="stockItemSelect"><option value="">— select —</option></select>
-          </label>
-          <label>Quantity
-            <input id="stockQty" type="number" min="1" step="1" />
-          </label>
-          <label>Payment Method (when adding stock)
-            <select id="stockPaymentMethod">
-              <option value="Cash">Cash</option>
-              <option value="Credit">Credit</option>
-            </select>
-          </label>
-          <label>Action
-            <select id="stockAction">
-              <option value="add">Add Stock (Purchase)</option>
-              <option value="remove">Remove Stock (Manual)</option>
-            </select>
-          </label>
-          <button type="submit">Apply</button>
-        </form>
-      </section>
+        <div id="salesJournalView" class="journal-subview">
+          <h2>Sales Journal</h2>
+          <table id="salesTable">
+            <thead>
+              <tr>
+                <th>Date</th><th>Description</th><th>Customer</th><th>Item</th><th>Qty</th>
+                <th>Amount</th><th>Method</th><th>Paid / Remaining</th><th></th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
 
-      <!-- Overall Log (expandable) -->
-      <section class="inventory-log-card">
-        <button id="toggleOverallLog" class="ghost">Show Purchases Log</button>
-        <div id="overallLogWrapper" class="hidden">
-          <h3>Purchases Log</h3>
-          <table id="overallLogTable">
-            <thead><tr><th>Date</th><th>Item</th><th>Action</th><th>Qty Change</th><th>Balance After</th><th>Note</th></tr></thead>
+        <div id="cashReceiptsView" class="journal-subview">
+          <h2>Cash Receipts Journal</h2>
+          <table id="cashReceiptsTable">
+            <thead><tr><th>Date</th><th>From</th><th>Amount</th><th>Sale ID</th><th>Note</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+
+        <div id="cashDisbursementsView" class="journal-subview">
+          <h2>Cash Disbursements</h2>
+          <table id="cashDisbursementsTable">
+            <thead><tr><th>Date</th><th>Payee / Description</th><th>Amount</th><th>Linked</th><th>Note</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+
+        <div id="generalJournalView" class="journal-subview">
+          <h2>General Journal</h2>
+          <table id="generalJournalTable">
+            <thead><tr><th>Date</th><th>Description</th><th>Type</th><th>Amount</th><th>Detail</th></tr></thead>
             <tbody></tbody>
           </table>
         </div>
       </section>
-    </section>
-
-    <!-- JOURNALS VIEW -->
-    <section id="journalsView" class="view">
-      <div class="journal-nav">
-        <button class="journal-subtab-btn active" data-target="purchasesJournalView">Purchases</button>
-        <button class="journal-subtab-btn" data-target="salesJournalView">Sales</button>
-        <button class="journal-subtab-btn" data-target="cashReceiptsView">Cash Receipts</button>
-        <button class="journal-subtab-btn" data-target="cashDisbursementsView">Cash Disbursements</button>
-        <button class="journal-subtab-btn" data-target="generalJournalView">General Journal</button>
-      </div>
-
-      <div id="purchasesJournalView" class="journal-subview active">
-        <h2>Purchases Journal</h2>
-        <table id="purchasesTable">
-          <thead>
-            <tr>
-              <th>Date</th><th>Item</th><th>Qty</th><th>Amount</th><th>Method</th>
-              <th>Supplier</th><th>Paid / Remaining</th><th>Linked Txn</th><th></th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      </div>
-
-      <div id="salesJournalView" class="journal-subview">
-        <h2>Sales Journal</h2>
-        <table id="salesTable">
-          <thead>
-            <tr>
-              <th>Date</th><th>Description</th><th>Customer</th><th>Item</th><th>Qty</th>
-              <th>Amount</th><th>Method</th><th>Paid / Remaining</th><th></th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      </div>
-
-      <div id="cashReceiptsView" class="journal-subview">
-        <h2>Cash Receipts Journal</h2>
-        <table id="cashReceiptsTable">
-          <thead><tr><th>Date</th><th>From</th><th>Amount</th><th>Sale ID</th><th>Note</th></tr></thead>
-          <tbody></tbody>
-        </table>
-      </div>
-
-      <div id="cashDisbursementsView" class="journal-subview">
-        <h2>Cash Disbursements</h2>
-        <table id="cashDisbursementsTable">
-          <thead><tr><th>Date</th><th>Payee / Description</th><th>Amount</th><th>Linked</th><th>Note</th></tr></thead>
-          <tbody></tbody>
-        </table>
-      </div>
-
-      <div id="generalJournalView" class="journal-subview">
-        <h2>General Journal</h2>
-        <table id="generalJournalTable">
-          <thead><tr><th>Date</th><th>Description</th><th>Type</th><th>Amount</th><th>Detail</th></tr></thead>
-          <tbody></tbody>
-        </table>
-      </div>
-    </section>
-  </main>
-
+    </main>
+  </div>
   <script src="script.js"></script>
+  <!-- ✅ Toast notification container -->
+<div id="toast" class="toast"></div>
 </body>
 </html>

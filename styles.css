@@ -1,134 +1,299 @@
+/* =========================================================
+   MONIMO — Clean "Instagram rule" UI
+   - Works with your current HTML (topbar/shell/sidebar/main)
+   - Soft gray cards in light mode (readable!)
+   - Crisp dark mode
+   - Visible tabs + journal subtabs
+   - Accent themes preserved (blue/green/lavender)
+   ========================================================= */
+
+/* -------------------------
+   Core tokens
+   ------------------------- */
 :root{
   --bg: #ffffff;
   --text: #111;
   --muted: #666;
-  --card: #f6f8fb;
+
   --surface: #ffffff;
   --border: #e8e8e8;
-  --shadow: 0 6px 20px rgba(0,0,0,0.06);
   --radius: 14px;
+  --shadow: 0 6px 20px rgba(0,0,0,0.06);
 
-  /* accent defaults (blue) */
+  /* Cards (Instagram rule: soft, readable) */
+  --panel-bg: #f7f8fa;         /* soft gray panel */
+  --panel-text: #222;          /* strong readable */
+  --panel-border: #dddddd;
+  --panel-header-bg: #eef1f5;
+
+  /* Accent defaults (blue) */
   --accent: #2b6ef6;
   --accent-strong: #1e53c3;
 }
 
 /* Accent themes */
-body.theme-blue { --accent:#2b6ef6; --accent-strong:#1e53c3; }
-body.theme-green { --accent:#22a06b; --accent-strong:#197e55; }
+body.theme-blue     { --accent:#2b6ef6; --accent-strong:#1e53c3; }
+body.theme-green    { --accent:#22a06b; --accent-strong:#197e55; }
 body.theme-lavender { --accent:#7c6cea; --accent-strong:#5a4dc0; }
 
-/* base layout */
-*{box-sizing:border-box}
-body{
-  margin:0;padding:16px;background:var(--bg);color:var(--text);
-  max-width:1100px;margin-left:auto;margin-right:auto;
-  transition:background-color .25s,color .25s
-}
-header{margin-bottom:16px}
-.brand-row{display:flex;align-items:center;justify-content:space-between;gap:10px}
-.brand-actions{display:flex;align-items:center;gap:10px}
-h1{margin:0;font-size:1.9rem;letter-spacing:.2px}
-.nav{display:flex;gap:8px;justify-content:center;margin-bottom:16px}
-.nav .tab-btn{padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:var(--surface);cursor:pointer}
-.nav .tab-btn.active{background:var(--accent);color:#fff;border-color:transparent}
-
-/* cards and summaries */
-#dashboard{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;justify-content:center}
-.card{flex:1 1 220px;text-align:center;background:var(--card);padding:18px;border-radius:var(--radius);box-shadow:var(--shadow)}
-.card h3{margin:0 0 6px}
-.summary-row{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;justify-content:center}
-.summary-card{flex:1 1 230px;background:var(--surface);padding:16px;border-radius:var(--radius);box-shadow:var(--shadow);text-align:center}
-.summary-card h4{margin:0 0 8px;font-weight:700}
-.summary-card div{font-size:1.2rem;font-weight:800}
-
-/* forms */
-#add form,#inventoryForm,#stockForm{display:flex;flex-direction:column;gap:12px;max-width:780px;margin:0 auto}
-.form-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
-label{display:flex;flex-direction:column;font-size:0.95rem;gap:6px}
-input,select{padding:10px;border:1px solid var(--border);border-radius:10px;background:var(--surface)}
-input:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px}
-button{padding:10px 14px;border:none;border-radius:10px;cursor:pointer;background:var(--accent);color:#fff;transition:transform .06s ease, background .18s}
-button:hover{background:var(--accent-strong)}
-button:active{transform:translateY(1px)}
-button.ghost{background:transparent;color:var(--text);border:1px solid var(--border)}
-button.ghost:hover{background:#f3f5fa}
-.actions{display:flex;gap:8px;align-items:center}
-
-/* tables */
-table{width:100%;border-collapse:collapse;background:var(--surface);border-radius:14px;overflow:hidden;margin-top:10px;box-shadow:var(--shadow)}
-th,td{padding:12px;border-bottom:1px solid #eee;text-align:left;vertical-align:middle}
-td:nth-child(6), th:nth-child(6), td:nth-child(7), th:nth-child(7){text-align:right}
-tr.low-stock td{background:#fff6f6}
-.muted{font-size:0.86rem;color:var(--muted);margin-top:4px}
-.tiny{font-size:0.75rem}
-
-/* inventory layout */
-.inventory-top{display:flex;gap:12px;margin-bottom:12px;align-items:flex-start;flex-wrap:wrap}
-.inventory-total{min-width:240px}
-
-/* view hiding */
-.view{display:none}
-.view.active{display:block}
-.hidden{display:none}
-
-/* per-item log row */
-.item-log-row td{background:#f9fafb;padding:8px;font-size:0.95rem}
-
-/* inventory log card */
-.inventory-log-card{margin-top:14px;text-align:center}
-#toggleOverallLog{border-radius:10px;padding:8px 12px}
-
-/* theme & accent UI */
-#theme-toggle{position:fixed;right:16px;top:16px;padding:8px 12px;border-radius:10px;border:1px solid var(--border);background:#f1f1f1;cursor:pointer;z-index:20}
-body.dark-mode #theme-toggle{background:#333;color:#fff;border-color:#444}
-.accent-picker{display:flex;gap:8px}
-.accent-dot{width:22px;height:22px;border-radius:50%;border:2px solid #fff;box-shadow:0 1px 6px rgba(0,0,0,.15);cursor:pointer}
-.accent-blue{background:#2b6ef6}
-.accent-green{background:#22a06b}
-.accent-lavender{background:#7c6cea}
-
-/* dark mode */
+/* Dark mode variables */
 body.dark-mode{
-  --bg:#121212; --text:#eaeaea; --muted:#b9b9b9;
-  --card:#1e1e1e; --surface:#1a1a1a; --border:#2b2b2b; --shadow:none;
-}
-body.dark-mode table, body.dark-mode th, body.dark-mode td{background:transparent;color:#fff;border-color:#2b2b2b}
-body.dark-mode input, body.dark-mode select, body.dark-mode button.ghost{background:#191919;color:#fff;border:1px solid #444}
-body.dark-mode .nav .tab-btn{background:#2a2a2a;color:#eaeaea;border-color:#2b2b2b}
-body.dark-mode .nav .tab-btn.active{background:var(--accent-strong)}
+  --bg:#121212;
+  --text:#eaeaea;
+  --muted:#b9b9b9;
 
-/* responsive */
-@media (max-width:900px){
-  .form-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  --surface:#1a1a1a;
+  --border:#2b2b2b;
+  --shadow:none;
+
+  --panel-bg:#1f1f1f;
+  --panel-text:#f1f1f1;
+  --panel-border:#3a3a3a;
+  --panel-header-bg:#262626;
 }
+
+/* -------------------------
+   Resets & base
+   ------------------------- */
+*{ box-sizing:border-box }
+html,body{ height:100% }
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--text);
+  transition: background-color .25s, color .25s;
+  font: 500 15px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+}
+
+/* -------------------------
+   Topbar
+   ------------------------- */
+.topbar{
+  position:fixed; inset:0 0 auto 0; height:60px; z-index:50;
+  display:flex; align-items:center; justify-content:space-between; gap:12px;
+  padding:0 16px; color:#fff;
+  background: linear-gradient(90deg, var(--accent), var(--accent-strong));
+  box-shadow:0 10px 30px rgba(0,0,0,.08);
+}
+.logo{ font-weight:800; letter-spacing:.2px; font-size:1.1rem }
+.hamburger{ background:transparent; border:none; color:#fff; font-size:1.4rem; cursor:pointer }
+.topbar-right{ display:flex; align-items:center; gap:10px }
+#theme-toggle{
+  border:1px solid rgba(255,255,255,.35);
+  background:transparent; color:#fff;
+  padding:8px 10px; border-radius:10px; cursor:pointer;
+}
+
+/* Accent picker */
+.accent-picker{ display:flex; gap:8px; align-items:center }
+.accent-dot{
+  width:18px; height:18px; border-radius:50%;
+  border:2px solid rgba(255,255,255,.9);
+  box-shadow:0 1px 6px rgba(0,0,0,.15); cursor:pointer;
+}
+.accent-blue{ background:#2b6ef6 }
+.accent-green{ background:#22a06b }
+.accent-lavender{ background:#7c6cea }
+.ghost{ background:transparent; color:inherit; border:1px solid var(--border) }
+
+/* -------------------------
+   Shell layout
+   ------------------------- */
+.shell{ display:flex; min-height:100vh; padding-top:60px }
+
+/* Sidebar */
+.sidebar{
+  position:fixed; top:60px; bottom:0; left:0; width:240px; overflow:auto;
+  background:linear-gradient(180deg, rgba(0,0,0,.04), transparent), #f7f9ff;
+  border-right:1px solid var(--border);
+  transition: width .25s ease, background .25s ease, border-color .25s ease;
+}
+.sidebar.collapsed{ width:64px }
+.side-nav{ display:flex; flex-direction:column; padding:10px }
+
+/* Sidebar – dark */
+body.dark-mode .sidebar{
+  background: linear-gradient(180deg, rgba(255,255,255,.04), transparent), #1a1a1a;
+  border-right:1px solid var(--border);
+}
+
+/* Main content */
+.main{
+  flex:1; margin-left:240px; padding:16px;
+  transition: margin-left .25s ease; max-width:100%;
+}
+.sidebar.collapsed ~ .main{ margin-left:64px }
+
+/* -------------------------
+   Tabs (sidebar) + Journal subtabs
+   ------------------------- */
+.tab-btn,
+.journal-subtab-btn{
+  padding:10px 12px;
+  border-radius:12px;
+  border:1px solid var(--panel-border);
+  background:var(--panel-bg);
+  color:var(--panel-text);
+  cursor:pointer; text-align:left;
+  margin-bottom:8px;
+  transition: background .2s, color .2s, border-color .2s, transform .06s;
+}
+.tab-btn:hover,
+.journal-subtab-btn:hover{
+  background: color-mix(in oklab, var(--panel-bg), #000 4%);
+}
+.tab-btn:active,
+.journal-subtab-btn:active{ transform: translateY(1px) }
+.tab-btn.active,
+.journal-subtab-btn.active{
+  background:var(--accent); color:#fff; border-color:transparent;
+  text-shadow: 0 1px 0 rgba(0,0,0,.15);
+}
+
+/* Make the journal subtab row breathe a bit */
+.journal-nav{
+  display:flex; gap:8px; justify-content:center;
+  margin: 0 0 12px; flex-wrap:wrap;
+}
+
+/* -------------------------
+   Cards & summaries (IG-style panels)
+   ------------------------- */
+#dashboard{ display:flex; gap:12px; flex-wrap:wrap; margin-bottom:16px; justify-content:center }
+.card{
+  flex:1 1 220px; text-align:center;
+  background:var(--panel-bg); color:var(--panel-text);
+  padding:18px; border-radius:var(--radius);
+  border:1px solid var(--panel-border);
+  box-shadow:var(--shadow);
+}
+.card h3{ margin:0 0 6px }
+
+.summary-row{ display:flex; gap:12px; flex-wrap:wrap; margin-bottom:16px; justify-content:center }
+.summary-card{
+  flex:1 1 230px;
+  background:var(--panel-bg); color:var(--panel-text);
+  padding:16px; border-radius:var(--radius);
+  border:1px solid var(--panel-border);
+  box-shadow:var(--shadow); text-align:center;
+}
+.summary-card h4{ margin:0 0 8px; font-weight:700 }
+.summary-card div{ font-size:1.2rem; font-weight:800 }
+
+/* Inventory summary + logs also panels */
+.inventory-log-card{
+  margin-top:14px; text-align:center;
+  background:var(--panel-bg); color:var(--panel-text);
+  border:1px solid var(--panel-border); border-radius:var(--radius);
+  box-shadow:var(--shadow); padding:12px;
+}
+#toggleOverallLog{ border-radius:10px; padding:8px 12px }
+
+/* Make journal subviews look like cards too */
+.journal-subview{
+  display:none; /* toggled by JS */
+  background:var(--panel-bg); color:var(--panel-text);
+  border:1px solid var(--panel-border); border-radius:var(--radius);
+  box-shadow:var(--shadow); padding:12px;
+}
+.journal-subview.active{ display:block }
+.journal-subview h2{ margin:0 0 10px; color:var(--panel-text) }
+
+/* -------------------------
+   Forms & controls
+   ------------------------- */
+#add form, #inventoryForm, #stockForm{
+  display:flex; flex-direction:column; gap:12px; max-width:780px; margin:0 auto;
+}
+.form-grid{ display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:12px }
+label{ display:flex; flex-direction:column; font-size:0.95rem; gap:6px }
+
+input,select{
+  padding:10px; border:1px solid var(--border); border-radius:10px; background:var(--surface); color:var(--text);
+  transition: border-color .2s, background-color .2s;
+}
+input:focus,select:focus{ outline:2px solid var(--accent); outline-offset:1px }
+
+button{
+  padding:10px 14px; border:none; border-radius:10px; cursor:pointer;
+  background:var(--accent); color:#fff;
+  transition: transform .06s, background .18s, opacity .18s;
+}
+button:hover{ background:var(--accent-strong) }
+button:active{ transform:translateY(1px) }
+button.ghost{ background:transparent; color:var(--text); border:1px solid var(--border) }
+button.ghost:hover{ background: color-mix(in oklab, var(--panel-bg), #000 3%) }
+.actions{ display:flex; gap:8px; align-items:center }
+
+.muted{ font-size:0.86rem; color:var(--muted); margin-top:4px }
+.tiny{ font-size:0.75rem }
+
+/* -------------------------
+   Tables (inside panels)
+   ------------------------- */
+table{
+  width:100%; border-collapse:collapse; background:var(--panel-bg);
+  color:var(--panel-text);
+  border-radius:14px; overflow:hidden; margin-top:10px;
+  border:1px solid var(--panel-border);
+  box-shadow:var(--shadow);
+}
+th,td{ padding:12px; border-bottom:1px solid var(--panel-border); text-align:left; vertical-align:middle }
+table thead th{ background:var(--panel-header-bg); color:var(--panel-text) }
+td:nth-child(6), th:nth-child(6), td:nth-child(7), th:nth-child(7){ text-align:right }
+tbody tr:hover td{ background: color-mix(in oklab, var(--panel-bg), #000 2.5%) }
+body.dark-mode tbody tr:hover td{ background: color-mix(in oklab, var(--panel-bg), #fff 3%) }
+tr.low-stock td{ background:#fff6f6 }
+body.dark-mode tr.low-stock td{ background:#2a1f1f }
+
+/* -------------------------
+   Inventory layout
+   ------------------------- */
+.inventory-top{ display:flex; gap:12px; margin-bottom:12px; align-items:flex-start; flex-wrap:wrap }
+.inventory-total{ min-width:240px }
+
+/* -------------------------
+   Views (JS toggles)
+   ------------------------- */
+.view{ display:none }
+.view.active{ display:block }
+.hidden{ display:none }
+
+/* -------------------------
+   Transactions section header
+   ------------------------- */
+.section-head{ display:flex; align-items:center; justify-content:space-between; gap:8px }
+.filters{ display:flex; align-items:center; gap:8px }
+
+/* Conditional fields */
+.conditional{ display:none }
+
+/* -------------------------
+   Responsive
+   ------------------------- */
+@media (max-width:900px){ .form-grid{ grid-template-columns:repeat(2, minmax(0,1fr)) } }
 @media (max-width:720px){
-  .summary-card,.card{flex-basis:100%}
-  #theme-toggle{right:8px;top:8px}
-  .inventory-top{flex-direction:column}
-  .form-grid{grid-template-columns:1fr}
+  .summary-card,.card{ flex-basis:100% }
+  .inventory-top{ flex-direction:column }
+  .form-grid{ grid-template-columns:1fr }
 }
-
-/* ------------------ Journals UI styles ------------------ */
-.journal-nav { display:flex; gap:8px; justify-content:center; margin-bottom:12px; flex-wrap:wrap; }
-.journal-subtab-btn { padding:8px 12px; border-radius:10px; border:1px solid var(--border); background:var(--surface); cursor:pointer; }
-.journal-subtab-btn.active { background:var(--accent); color:#fff; border-color:transparent; }
-.journal-subview { display:none; }
-.journal-subview.active { display:block; }
-
-/* mark-paid / pay-supplier buttons */
-.mark-paid-btn, .pay-supplier-btn { padding:8px 10px; border-radius:10px; border:none; background:#4caf50; color:#fff; cursor:pointer; }
-.mark-paid-btn:hover, .pay-supplier-btn:hover { background:#3d8b40; }
-.partial-btn { padding:8px 10px; border-radius:10px; border:none; background:#ff8c00; color:#fff; cursor:pointer; }
-.partial-btn:hover { background:#e27b00; }
-.edit-btn, .del-btn { padding:7px 10px; border-radius:10px; border:none; background:#777; color:#fff; }
-.edit-btn:hover { background:#5f5f5f; }
-.del-btn { background:#e25252; }
-.del-btn:hover { background:#c64545; }
-
-/* Transactions section header */
-.section-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
-.filters{display:flex;align-items:center;gap:8px}
-
-/* conditional fields */
-.conditional{display:none}
+/* Toast notification */
+#toast {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  background: var(--accent);
+  color: #fff;
+  padding: 12px 20px;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.4s ease, transform 0.4s ease;
+  transform: translateY(20px);
+  z-index: 9999;
+}
+#toast.show {
+  opacity: 1;
+  transform: translateY(0);
+}
