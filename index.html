@@ -173,6 +173,7 @@
               </label>
               <button id="applyFilter" class="ghost">Filter</button>
               <button id="clearFilter" class="ghost">Clear</button>
+              <button id="exportIncomeStmtCsv" class="ghost">Export Income Statement</button>
             </div>
           </div>
           <table id="transactionsTable">
@@ -327,6 +328,169 @@
     </main>
   </div>
   <script src="script.js"></script>
+
+  <script>
+(function(){
+  const DEBUG = true;
+
+  function parseCurrency(txt){
+    if(!txt) return 0;
+    const t = String(txt).trim();
+    const neg = /^\(.*\)$/.test(t);
+    const cleaned = t.replace(/[^\d.-]/g,'').replace(/,/g,'');
+    const n = parseFloat(cleaned);
+    return isNaN(n) ? 0 : (neg ? -Math.abs(n) : n);
+  }
+
+  function parseDateFlexible(text){
+    if(!text) return null;
+    const s = String(text).trim();
+    // try native parse first
+    let d = new Date(s);
+    if(!isNaN(d)) return d;
+    // try ISO-ish without time
+    if(/^\d{4}-\d{2}-\d{2}$/.test(s)) { d = new Date(s); if(!isNaN(d)) return d; }
+    // try dd/mm/yyyy or dd-mm-yyyy
+    const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+    if(m){
+      let dd = parseInt(m[1],10), mm = parseInt(m[2],10), yy = parseInt(m[3],10);
+      if(yy < 100) yy += 2000;
+      return new Date(yy, mm-1, dd);
+    }
+    return null;
+  }
+
+  function getTransactionRows(){
+    const tbody = document.querySelector('#transactionsTable tbody');
+    if(!tbody) return [];
+    const all = Array.from(tbody.querySelectorAll('tr'));
+    const filtered = all.filter(r=>{
+      if(r.classList.contains('empty-state')) return false;
+      // require at least 4 cells (Date,Desc,Type,Amount)
+      const tds = r.querySelectorAll('td');
+      if(tds.length < 4) return false;
+      // only visible rows
+      if(r.offsetParent === null) return false;
+      return true;
+    });
+    if(DEBUG) console.log('transactions - total tbody rows:', all.length, 'usable rows:', filtered.length);
+    return filtered;
+  }
+
+  function rowToTxn(row){
+    const cols = row.querySelectorAll('td');
+    const dateCell = cols[0];
+    // prefer data-date attribute if present
+    const dateText = dateCell ? (dateCell.dataset && dateCell.dataset.date ? dateCell.dataset.date : dateCell.getAttribute('data-date') || dateCell.textContent.trim()) : '';
+    const desc = (cols[1] && cols[1].textContent || '').trim();
+    const type = (cols[2] && cols[2].textContent || '').trim().toLowerCase();
+    const amt = parseCurrency(cols[3] && cols[3].textContent);
+    const date = parseDateFlexible(dateText);
+    if(DEBUG) console.log('parsed txn ->', { dateText, date: date ? date.toISOString().slice(0,10) : null, desc, type, amt });
+    return { date, dateText, desc, type, amount: amt };
+  }
+
+  function inRange(txn, from, to){
+    if(!from && !to) return true;
+    if(!txn.date) return true; // keep undated txns
+    if(from && txn.date < from) return false;
+    if(to && txn.date > to) return false;
+    return true;
+  }
+
+  function buildIncomeStatement(filteredTxns){
+    const revenue = filteredTxns
+      .filter(t => t.type.includes('revenue') || t.type.includes('income') || t.type.includes('sale'))
+      .reduce((s,t)=> s + t.amount, 0);
+    const expenses = filteredTxns
+      .filter(t => t.type.includes('expense') || t.type.includes('cost') || t.type.includes('cogs') || t.type.includes('purchase'))
+      .reduce((s,t)=> s + t.amount, 0);
+    const net = revenue - expenses;
+    return { revenue, expenses, net };
+  }
+
+  function csvEscape(val){
+    if(val == null) return '';
+    const s = String(val);
+    if(s.includes('"') || s.includes(',') || s.includes('\n')) return '"' + s.replace(/"/g,'""') + '"';
+    return s;
+  }
+
+  function downloadCSV(filename, csv){
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(()=> URL.revokeObjectURL(url), 5000);
+  }
+
+  function showToast(msg){
+    const t = document.getElementById('toast');
+    if(!t) return;
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(()=> t.classList.remove('show'), 2000);
+  }
+
+  const btn = document.getElementById('exportIncomeStmtCsv');
+  if(btn){
+    btn.addEventListener('click', ()=>{
+      const fromInput = document.getElementById('fromDate');
+      const toInput = document.getElementById('toDate');
+      const monthPicker = document.getElementById('monthPicker');
+
+      let from = fromInput && fromInput.value ? new Date(fromInput.value) : null;
+      let to = toInput && toInput.value ? new Date(toInput.value) : null;
+
+      if(monthPicker && monthPicker.value){
+        const [y,m] = monthPicker.value.split('-').map(Number);
+        from = new Date(y, m-1, 1);
+        to = new Date(y, m, 0, 23,59,59,999);
+      } else {
+        if(from) from = new Date(from.getFullYear(), from.getMonth(), from.getDate(), 0,0,0,0);
+        if(to) to = new Date(to.getFullYear(), to.getMonth(), to.getDate(), 23,59,59,999);
+      }
+
+      if(DEBUG) console.log('Export range:', from, to);
+
+      const rows = getTransactionRows();
+      const txns = rows.map(rowToTxn).filter(txn => inRange(txn, from, to));
+
+      if(DEBUG) console.log('Transactions in range:', txns.length);
+      if(txns.length === 0){
+        alert('No transactions in selected period.');
+        return;
+      }
+
+      const stmt = buildIncomeStatement(txns);
+
+      const periodLabel = (from && to) ? `${from.toISOString().slice(0,10)} to ${to.toISOString().slice(0,10)}` : 'All time';
+      let csv = '';
+      csv += csvEscape('Income Statement') + '\n';
+      csv += csvEscape('Period:') + ',' + csvEscape(periodLabel) + '\n\n';
+      csv += csvEscape('Category') + ',' + csvEscape('Amount') + '\n';
+      csv += csvEscape('Revenue') + ',' + csvEscape(stmt.revenue.toFixed(2)) + '\n';
+      csv += csvEscape('Expenses') + ',' + csvEscape(stmt.expenses.toFixed(2)) + '\n';
+      csv += csvEscape('Net Income') + ',' + csvEscape(stmt.net.toFixed(2)) + '\n\n';
+
+      csv += csvEscape('Transactions') + '\n';
+      csv += ['Date','Description','Type','Amount'].map(csvEscape).join(',') + '\n';
+      txns.forEach(r => {
+        csv += [r.dateText || '', r.desc, r.type, r.amount.toFixed(2)].map(csvEscape).join(',') + '\n';
+      });
+
+      const filename = `income_statement_${new Date().toISOString().slice(0,10)}.csv`;
+      downloadCSV(filename, csv);
+      showToast('Income statement exported');
+    });
+  }
+})();
+</script>
+
   <!-- ✅ Toast notification container -->
 <div id="toast" class="toast"></div>
 </body>
